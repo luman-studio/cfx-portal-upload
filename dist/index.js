@@ -296190,6 +296190,7 @@ async function run() {
         // Version config inputs
         const escrowedInput = core.getInput('escrowed');
         const openSourceInput = core.getInput('openSource');
+        const resourcePath = core.getInput('resourcePath');
         const chunkSize = parseInt(core.getInput('chunkSize'));
         const maxRetries = parseInt(core.getInput('maxRetries'));
         if (isNaN(chunkSize)) {
@@ -296276,89 +296277,24 @@ async function run() {
                     core.info(`✅ Parsed openSource config: ${JSON.stringify(openSourceConfig)}`);
                 }
             }
-            // Parse HQ and LQ configs
-            const hqInput = core.getInput('hq');
-            const lqInput = core.getInput('lq');
-            let hqConfig = null;
-            let lqConfig = null;
-            if (hqInput) {
-                core.info('🔧 Parsing HQ config...');
-                try {
-                    hqConfig = JSON.parse(hqInput);
-                    core.info('✅ Parsed HQ as JSON');
-                }
-                catch {
-                    core.info('⚠️ JSON parse failed, trying YAML-like parsing...');
-                    const lines = hqInput.split('\n').filter(line => line.trim());
-                    hqConfig = {};
-                    for (const line of lines) {
-                        const match = line.match(/^\s*(\w+):\s*(.+)$/);
-                        if (match) {
-                            const [, key, value] = match;
-                            core.info(`  Found key: ${key}, value: ${value}`);
-                            // Only parse asset_id, asset_name, branch
-                            if (['asset_id', 'asset_name', 'branch'].includes(key)) {
-                                hqConfig[key] = value.replace(/[\"']/g, '').trim();
-                            }
-                        }
-                    }
-                    core.info(`✅ Parsed HQ config: ${JSON.stringify(hqConfig)}`);
-                }
-            }
-            if (lqInput) {
-                core.info('🔧 Parsing LQ config...');
-                try {
-                    lqConfig = JSON.parse(lqInput);
-                    core.info('✅ Parsed LQ as JSON');
-                }
-                catch {
-                    core.info('⚠️ JSON parse failed, trying YAML-like parsing...');
-                    const lines = lqInput.split('\n').filter(line => line.trim());
-                    lqConfig = {};
-                    for (const line of lines) {
-                        const match = line.match(/^\s*(\w+):\s*(.+)$/);
-                        if (match) {
-                            const [, key, value] = match;
-                            core.info(`  Found key: ${key}, value: ${value}`);
-                            // Only parse asset_id, asset_name, branch
-                            if (['asset_id', 'asset_name', 'branch'].includes(key)) {
-                                lqConfig[key] = value.replace(/[\"']/g, '').trim();
-                            }
-                        }
-                    }
-                    core.info(`✅ Parsed LQ config: ${JSON.stringify(lqConfig)}`);
-                }
-            }
             // Determine which versions to create
             const shouldCreateEscrowed = !!escrowedConfig;
             const shouldCreateOpenSource = !!openSourceConfig;
-            const shouldCreateHQ = !!hqConfig;
-            const shouldCreateLQ = !!lqConfig;
             const uploadTypes = [];
             if (shouldCreateEscrowed)
                 uploadTypes.push('escrowed');
             if (shouldCreateOpenSource)
                 uploadTypes.push('open-source');
-            if (shouldCreateHQ)
-                uploadTypes.push('HQ');
-            if (shouldCreateLQ)
-                uploadTypes.push('LQ');
             core.info(`🚀 Creating versions: ${uploadTypes.join(', ')}`);
             // Check if we should create multiple versions
-            if (shouldCreateEscrowed ||
-                shouldCreateOpenSource ||
-                shouldCreateHQ ||
-                shouldCreateLQ) {
+            if (shouldCreateEscrowed || shouldCreateOpenSource) {
                 core.info('🚀 Using multi-version upload logic');
                 const buildOptions = {
                     createEscrowed: shouldCreateEscrowed,
                     createOpenSource: shouldCreateOpenSource,
-                    createHq: shouldCreateHQ,
-                    createLq: shouldCreateLQ,
                     escrowedConfig: escrowedConfig || undefined,
                     openSourceConfig: openSourceConfig || undefined,
-                    hqConfig: hqConfig || undefined,
-                    lqConfig: lqConfig || undefined
+                    resourcePath: resourcePath || undefined
                 };
                 const baseAssetName = assetName || (0, path_1.basename)((0, utils_1.getEnv)('GITHUB_WORKSPACE'));
                 const zipPaths = await (0, utils_1.createVersions)(buildOptions, baseAssetName);
@@ -296395,55 +296331,6 @@ async function run() {
                     }
                     core.info('Uploading open source version ...');
                     await uploadZip(zipPaths.openSource, openSourceId, chunkSize, cookies);
-                }
-                let hqZipPath = null;
-                let hqId = null;
-                let lqZipPath = null;
-                let lqId = null;
-                if (shouldCreateHQ && hqConfig) {
-                    core.info('📦 Creating HQ version...');
-                    const hqBranch = hqConfig.branch || 'main';
-                    hqZipPath = await (0, utils_1.createHQVersion)(hqConfig.asset_name || `${baseAssetName}-hq`, hqBranch);
-                    if (hqConfig.asset_id) {
-                        hqId = hqConfig.asset_id;
-                        core.info(`Using HQ asset_id: ${hqId}`);
-                    }
-                    else if (hqConfig.asset_name) {
-                        core.info(`Looking up HQ asset by name: ${hqConfig.asset_name}`);
-                        hqId = await (0, utils_1.resolveAssetId)(hqConfig.asset_name, cookies);
-                    }
-                    else {
-                        const fallbackName = `${baseAssetName}-hq`;
-                        core.info(`Using fallback HQ name: ${fallbackName}`);
-                        hqId = await (0, utils_1.resolveAssetId)(fallbackName, cookies);
-                    }
-                }
-                if (shouldCreateLQ && lqConfig) {
-                    core.info('📦 Creating LQ version...');
-                    const lqBranch = lqConfig.branch || 'low-quality';
-                    lqZipPath = await (0, utils_1.createLQVersion)(lqConfig.asset_name || `${baseAssetName}-lq`, lqBranch);
-                    if (lqConfig.asset_id) {
-                        lqId = lqConfig.asset_id;
-                        core.info(`Using LQ asset_id: ${lqId}`);
-                    }
-                    else if (lqConfig.asset_name) {
-                        core.info(`Looking up LQ asset by name: ${lqConfig.asset_name}`);
-                        lqId = await (0, utils_1.resolveAssetId)(lqConfig.asset_name, cookies);
-                    }
-                    else {
-                        const fallbackName = `${baseAssetName}-lq`;
-                        core.info(`Using fallback LQ name: ${fallbackName}`);
-                        lqId = await (0, utils_1.resolveAssetId)(fallbackName, cookies);
-                    }
-                }
-                // Now upload both versions
-                if (hqZipPath && hqId) {
-                    core.info('🚀 Uploading HQ version...');
-                    await uploadZip(hqZipPath, hqId, chunkSize, cookies);
-                }
-                if (lqZipPath && lqId) {
-                    core.info('🚀 Uploading LQ version...');
-                    await uploadZip(lqZipPath, lqId, chunkSize, cookies);
                 }
             }
             else {
@@ -296736,8 +296623,6 @@ exports.getUrl = getUrl;
 exports.getEnv = getEnv;
 exports.zipAsset = zipAsset;
 exports.deleteIfExists = deleteIfExists;
-exports.createHQVersion = createHQVersion;
-exports.createLQVersion = createLQVersion;
 exports.createEscrowedVersion = createEscrowedVersion;
 exports.createOpenSourceVersion = createOpenSourceVersion;
 exports.createVersions = createVersions;
@@ -296831,11 +296716,15 @@ function copyRecursivelyFiltered(src, dest, excludeDirs = [], excludeArchives = 
 /**
  * Copies workspace to destination directory, excluding system dirs and archives
  * @param destDir Destination directory path
+ * @param resourcePath Optional subdirectory within workspace to copy from
  */
-function copyWorkspaceToDir(destDir) {
+function copyWorkspaceToDir(destDir, resourcePath) {
     const workspacePath = getEnv('GITHUB_WORKSPACE');
+    const sourcePath = resourcePath
+        ? path_2.default.join(workspacePath, resourcePath)
+        : workspacePath;
     ensureDirectory(destDir);
-    const entries = fs_1.default.readdirSync(workspacePath);
+    const entries = fs_1.default.readdirSync(sourcePath);
     for (const entry of entries) {
         if (EXCLUDE_DIRS.includes(entry)) {
             continue;
@@ -296844,7 +296733,7 @@ function copyWorkspaceToDir(destDir) {
             core.debug(`Skipping archive file: ${entry}`);
             continue;
         }
-        const srcPath = path_2.default.join(workspacePath, entry);
+        const srcPath = path_2.default.join(sourcePath, entry);
         const destPath = path_2.default.join(destDir, entry);
         const stats = fs_1.default.statSync(srcPath);
         if (stats.isDirectory()) {
@@ -296939,17 +296828,24 @@ function updateFxManifestVersion(fxmanifestPath) {
  * @returns Path to the created ZIP file
  */
 async function createResourceVersion(config) {
-    const { type } = config;
+    const { type, resourcePath } = config;
     const workspacePath = getEnv('GITHUB_WORKSPACE');
-    const workspaceName = path_2.default.basename(workspacePath);
+    // If resourcePath is specified, use it as the source directory
+    const sourcePath = resourcePath
+        ? path_2.default.join(workspacePath, resourcePath)
+        : workspacePath;
+    const resourceName = path_2.default.basename(sourcePath);
     const dirName = type === 'escrowed' ? 'escrowed' : 'open-source';
     const targetDir = path_2.default.join(workspacePath, dirName);
     const zipSuffix = type === 'escrowed' ? 'escrowed' : 'opensource';
     core.info(`Creating ${type} version...`);
+    if (resourcePath) {
+        core.info(`Using resource path: ${resourcePath}`);
+    }
     // Build web/dui if exists
-    await buildWebAndDui();
-    // Copy workspace to target directory
-    copyWorkspaceToDir(targetDir);
+    await buildWebAndDui(resourcePath);
+    // Copy source to target directory
+    copyWorkspaceToDir(targetDir, resourcePath);
     // Update fxmanifest.lua version (only if git tag exists)
     const fxmanifestPath = path_2.default.join(targetDir, 'fxmanifest.lua');
     updateFxManifestVersion(fxmanifestPath);
@@ -296960,8 +296856,8 @@ async function createResourceVersion(config) {
     }
     // For escrowed: don't touch escrow_ignore - author controls it in fxmanifest.lua
     // Create ZIP
-    const zipPath = `${workspaceName}.${zipSuffix}.zip`;
-    return await zipDirectory(targetDir, zipPath, workspaceName);
+    const zipPath = `${resourceName}.${zipSuffix}.zip`;
+    return await zipDirectory(targetDir, zipPath, resourceName);
 }
 // ============================================================================
 // PUPPETEER SETUP
@@ -297130,10 +297026,14 @@ function deleteIfExists(_path) {
 }
 /**
  * Builds web and DUI if they exist
+ * @param resourcePath Optional subdirectory within workspace
  */
-async function buildWebAndDui() {
+async function buildWebAndDui(resourcePath) {
     const workspacePath = getEnv('GITHUB_WORKSPACE');
-    const webPath = path_2.default.join(workspacePath, 'web');
+    const basePath = resourcePath
+        ? path_2.default.join(workspacePath, resourcePath)
+        : workspacePath;
+    const webPath = path_2.default.join(basePath, 'web');
     if (fs_1.default.existsSync(webPath)) {
         core.info('🔨 Building web files...');
         const { spawn } = __nccwpck_require__(35317);
@@ -297166,7 +297066,7 @@ async function buildWebAndDui() {
             });
         });
     }
-    const duiPath = path_2.default.join(workspacePath, 'dui');
+    const duiPath = path_2.default.join(basePath, 'dui');
     if (fs_1.default.existsSync(duiPath)) {
         core.info('🔨 Building DUI files...');
         const { spawn } = __nccwpck_require__(35317);
@@ -297187,7 +297087,7 @@ async function buildWebAndDui() {
                         if (buildCode === 0) {
                             // Copy DUI build files
                             const duiBuildPath = path_2.default.join(duiPath, 'build');
-                            const targetDuiBuildPath = path_2.default.join(workspacePath, 'dui', 'build');
+                            const targetDuiBuildPath = path_2.default.join(basePath, 'dui', 'build');
                             if (fs_1.default.existsSync(duiBuildPath)) {
                                 if (!fs_1.default.existsSync(targetDuiBuildPath)) {
                                     fs_1.default.mkdirSync(targetDuiBuildPath, { recursive: true });
@@ -297210,150 +297110,25 @@ async function buildWebAndDui() {
     }
 }
 /**
- * Checkout a specific branch
- * @param branchName The name of the branch to checkout
- */
-async function checkoutBranch(branchName) {
-    const workspacePath = getEnv('GITHUB_WORKSPACE');
-    core.info(`🔀 Checking out branch: ${branchName}`);
-    const { spawn } = __nccwpck_require__(35317);
-    // Reset any local changes first
-    await new Promise((resolve, reject) => {
-        const resetProcess = spawn('git', ['reset', '--hard'], {
-            cwd: workspacePath,
-            stdio: 'inherit',
-            shell: true
-        });
-        resetProcess.on('close', (code) => {
-            if (code === 0) {
-                core.info('✅ Reset local changes');
-                resolve();
-            }
-            else {
-                reject(new Error(`Git reset failed with code ${code}`));
-            }
-        });
-    });
-    // Clean untracked files
-    await new Promise((resolve, reject) => {
-        const cleanProcess = spawn('git', ['clean', '-fd'], {
-            cwd: workspacePath,
-            stdio: 'inherit',
-            shell: true
-        });
-        cleanProcess.on('close', (code) => {
-            if (code === 0) {
-                core.info('✅ Cleaned untracked files');
-                resolve();
-            }
-            else {
-                // Clean can fail if there's nothing to clean, that's ok
-                resolve();
-            }
-        });
-    });
-    // Fetch the branch
-    await new Promise((resolve, reject) => {
-        const gitProcess = spawn('git', ['fetch', 'origin', branchName], {
-            cwd: workspacePath,
-            stdio: 'inherit',
-            shell: true
-        });
-        gitProcess.on('close', (code) => {
-            if (code === 0) {
-                const checkoutProcess = spawn('git', ['checkout', branchName], {
-                    cwd: workspacePath,
-                    stdio: 'inherit',
-                    shell: true
-                });
-                checkoutProcess.on('close', (checkoutCode) => {
-                    if (checkoutCode === 0) {
-                        core.info(`✅ Checked out branch: ${branchName}`);
-                        resolve();
-                    }
-                    else {
-                        reject(new Error(`Git checkout failed with code ${checkoutCode}`));
-                    }
-                });
-            }
-            else {
-                reject(new Error(`Git fetch failed with code ${code}`));
-            }
-        });
-    });
-}
-/**
- * Creates HQ version of the asset
- * @param _assetName The name of the asset (unused, kept for API compatibility)
- * @param branch The branch to checkout (defaults to 'main')
- * @returns Path to the HQ zip file
- */
-async function createHQVersion(_assetName, branch = 'main') {
-    core.info(`📦 Creating HQ version from branch: ${branch}`);
-    // Checkout the HQ branch
-    await checkoutBranch(branch);
-    const workspacePath = getEnv('GITHUB_WORKSPACE');
-    const workspaceName = path_2.default.basename(workspacePath);
-    // Save ZIP outside workspace to prevent git clean from removing it
-    const zipPath = path_2.default.join(workspacePath, '..', `${workspaceName}.hq.zip`);
-    // Exclude Git and unnecessary files from ZIP
-    const excludePaths = [
-        '.git',
-        '.github',
-        '.vscode',
-        'node_modules',
-        '.gitignore',
-        '.gitattributes'
-    ];
-    await zipDirectory(workspacePath, zipPath, workspaceName, excludePaths);
-    core.info(`✅ HQ version created: ${zipPath}`);
-    return zipPath;
-}
-/**
- * Creates LQ version of the asset
- * @param _assetName The name of the asset (unused, kept for API compatibility)
- * @param branch The branch to checkout (defaults to 'low-quality')
- * @returns Path to the LQ zip file
- */
-async function createLQVersion(_assetName, branch = 'low-quality') {
-    core.info(`📦 Creating LQ version from branch: ${branch}`);
-    // Checkout the LQ branch
-    await checkoutBranch(branch);
-    const workspacePath = getEnv('GITHUB_WORKSPACE');
-    const workspaceName = path_2.default.basename(workspacePath);
-    // Save ZIP outside workspace to prevent git clean from removing it
-    const zipPath = path_2.default.join(workspacePath, '..', `${workspaceName}.lq.zip`);
-    // Exclude Git and unnecessary files from ZIP
-    const excludePaths = [
-        '.git',
-        '.github',
-        '.vscode',
-        'node_modules',
-        '.gitignore',
-        '.gitattributes'
-    ];
-    await zipDirectory(workspacePath, zipPath, workspaceName, excludePaths);
-    core.info(`✅ LQ version created: ${zipPath}`);
-    return zipPath;
-}
-/**
  * Creates escrowed version of the asset
  * Uses the unified createResourceVersion function
  */
-async function createEscrowedVersion(_assetName) {
+async function createEscrowedVersion(_assetName, resourcePath) {
     return createResourceVersion({
         type: 'escrowed',
-        assetName: _assetName
+        assetName: _assetName,
+        resourcePath
     });
 }
 /**
  * Creates open source version of the asset
  * Uses the unified createResourceVersion function
  */
-async function createOpenSourceVersion(_assetName) {
+async function createOpenSourceVersion(_assetName, resourcePath) {
     return createResourceVersion({
         type: 'opensource',
-        assetName: _assetName
+        assetName: _assetName,
+        resourcePath
     });
 }
 /**
@@ -297417,11 +297192,11 @@ async function createVersions(options, assetName) {
     deleteIfExists('open-source/');
     if (options.createEscrowed) {
         const escrowedName = options.escrowedConfig?.asset_name || `${assetName}-escrowed`;
-        zipPaths.escrowed = await createEscrowedVersion(escrowedName);
+        zipPaths.escrowed = await createEscrowedVersion(escrowedName, options.resourcePath);
     }
     if (options.createOpenSource) {
         const openSourceName = options.openSourceConfig?.asset_name || `${assetName}-source`;
-        zipPaths.openSource = await createOpenSourceVersion(openSourceName);
+        zipPaths.openSource = await createOpenSourceVersion(openSourceName, options.resourcePath);
     }
     return zipPaths;
 }

@@ -5,12 +5,7 @@ import axios from 'axios'
 
 import { createReadStream, statSync } from 'fs'
 import { basename } from 'path'
-import {
-  ReUploadResponse,
-  SSOResponseBody,
-  BuildOptions,
-  ZipPaths
-} from './types'
+import { ReUploadResponse, SSOResponseBody, BuildOptions } from './types'
 import {
   deleteIfExists,
   resolveAssetId,
@@ -18,9 +13,7 @@ import {
   getUrl,
   preparePuppeteer,
   zipAsset,
-  createVersions,
-  createHQVersion,
-  createLQVersion
+  createVersions
 } from './utils'
 
 /**
@@ -93,6 +86,7 @@ export async function run(): Promise<void> {
     // Version config inputs
     const escrowedInput = core.getInput('escrowed')
     const openSourceInput = core.getInput('openSource')
+    const resourcePath = core.getInput('resourcePath')
 
     const chunkSize = parseInt(core.getInput('chunkSize'))
     const maxRetries = parseInt(core.getInput('maxRetries'))
@@ -197,91 +191,24 @@ export async function run(): Promise<void> {
         }
       }
 
-      // Parse HQ and LQ configs
-      const hqInput = core.getInput('hq')
-      const lqInput = core.getInput('lq')
-
-      let hqConfig: any = null
-      let lqConfig: any = null
-
-      if (hqInput) {
-        core.info('🔧 Parsing HQ config...')
-        try {
-          hqConfig = JSON.parse(hqInput)
-          core.info('✅ Parsed HQ as JSON')
-        } catch {
-          core.info('⚠️ JSON parse failed, trying YAML-like parsing...')
-          const lines = hqInput.split('\n').filter(line => line.trim())
-          hqConfig = {}
-          for (const line of lines) {
-            const match = line.match(/^\s*(\w+):\s*(.+)$/)
-            if (match) {
-              const [, key, value] = match
-              core.info(`  Found key: ${key}, value: ${value}`)
-              // Only parse asset_id, asset_name, branch
-              if (['asset_id', 'asset_name', 'branch'].includes(key)) {
-                hqConfig[key] = value.replace(/[\"']/g, '').trim()
-              }
-            }
-          }
-          core.info(`✅ Parsed HQ config: ${JSON.stringify(hqConfig)}`)
-        }
-      }
-
-      if (lqInput) {
-        core.info('🔧 Parsing LQ config...')
-        try {
-          lqConfig = JSON.parse(lqInput)
-          core.info('✅ Parsed LQ as JSON')
-        } catch {
-          core.info('⚠️ JSON parse failed, trying YAML-like parsing...')
-          const lines = lqInput.split('\n').filter(line => line.trim())
-          lqConfig = {}
-          for (const line of lines) {
-            const match = line.match(/^\s*(\w+):\s*(.+)$/)
-            if (match) {
-              const [, key, value] = match
-              core.info(`  Found key: ${key}, value: ${value}`)
-              // Only parse asset_id, asset_name, branch
-              if (['asset_id', 'asset_name', 'branch'].includes(key)) {
-                lqConfig[key] = value.replace(/[\"']/g, '').trim()
-              }
-            }
-          }
-          core.info(`✅ Parsed LQ config: ${JSON.stringify(lqConfig)}`)
-        }
-      }
-
       // Determine which versions to create
       const shouldCreateEscrowed = !!escrowedConfig
       const shouldCreateOpenSource = !!openSourceConfig
-      const shouldCreateHQ = !!hqConfig
-      const shouldCreateLQ = !!lqConfig
 
       const uploadTypes = []
       if (shouldCreateEscrowed) uploadTypes.push('escrowed')
       if (shouldCreateOpenSource) uploadTypes.push('open-source')
-      if (shouldCreateHQ) uploadTypes.push('HQ')
-      if (shouldCreateLQ) uploadTypes.push('LQ')
       core.info(`🚀 Creating versions: ${uploadTypes.join(', ')}`)
 
       // Check if we should create multiple versions
-      if (
-        shouldCreateEscrowed ||
-        shouldCreateOpenSource ||
-        shouldCreateHQ ||
-        shouldCreateLQ
-      ) {
+      if (shouldCreateEscrowed || shouldCreateOpenSource) {
         core.info('🚀 Using multi-version upload logic')
         const buildOptions: BuildOptions = {
           createEscrowed: shouldCreateEscrowed,
           createOpenSource: shouldCreateOpenSource,
-          createHq: shouldCreateHQ,
-          createLq: shouldCreateLQ,
           escrowedConfig: escrowedConfig || undefined,
           openSourceConfig: openSourceConfig || undefined,
-          hqConfig: hqConfig || undefined,
-          lqConfig: lqConfig || undefined
+          resourcePath: resourcePath || undefined
         }
 
         const baseAssetName = assetName || basename(getEnv('GITHUB_WORKSPACE'))
@@ -335,64 +262,6 @@ export async function run(): Promise<void> {
 
           core.info('Uploading open source version ...')
           await uploadZip(zipPaths.openSource, openSourceId, chunkSize, cookies)
-        }
-
-        let hqZipPath: string | null = null
-        let hqId: string | null = null
-        let lqZipPath: string | null = null
-        let lqId: string | null = null
-
-        if (shouldCreateHQ && hqConfig) {
-          core.info('📦 Creating HQ version...')
-          const hqBranch = hqConfig.branch || 'main'
-          hqZipPath = await createHQVersion(
-            hqConfig.asset_name || `${baseAssetName}-hq`,
-            hqBranch
-          )
-
-          if (hqConfig.asset_id) {
-            hqId = hqConfig.asset_id
-            core.info(`Using HQ asset_id: ${hqId}`)
-          } else if (hqConfig.asset_name) {
-            core.info(`Looking up HQ asset by name: ${hqConfig.asset_name}`)
-            hqId = await resolveAssetId(hqConfig.asset_name, cookies)
-          } else {
-            const fallbackName = `${baseAssetName}-hq`
-            core.info(`Using fallback HQ name: ${fallbackName}`)
-            hqId = await resolveAssetId(fallbackName, cookies)
-          }
-        }
-
-        if (shouldCreateLQ && lqConfig) {
-          core.info('📦 Creating LQ version...')
-          const lqBranch = lqConfig.branch || 'low-quality'
-          lqZipPath = await createLQVersion(
-            lqConfig.asset_name || `${baseAssetName}-lq`,
-            lqBranch
-          )
-
-          if (lqConfig.asset_id) {
-            lqId = lqConfig.asset_id
-            core.info(`Using LQ asset_id: ${lqId}`)
-          } else if (lqConfig.asset_name) {
-            core.info(`Looking up LQ asset by name: ${lqConfig.asset_name}`)
-            lqId = await resolveAssetId(lqConfig.asset_name, cookies)
-          } else {
-            const fallbackName = `${baseAssetName}-lq`
-            core.info(`Using fallback LQ name: ${fallbackName}`)
-            lqId = await resolveAssetId(fallbackName, cookies)
-          }
-        }
-
-        // Now upload both versions
-        if (hqZipPath && hqId) {
-          core.info('🚀 Uploading HQ version...')
-          await uploadZip(hqZipPath, hqId, chunkSize, cookies)
-        }
-
-        if (lqZipPath && lqId) {
-          core.info('🚀 Uploading LQ version...')
-          await uploadZip(lqZipPath, lqId, chunkSize, cookies)
         }
       } else {
         core.info('⚠️ Using single upload logic (fallback)')

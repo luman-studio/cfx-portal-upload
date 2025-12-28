@@ -112,28 +112,37 @@ The action will automatically upload your resource to the portal.
       asset_name: "my-resource-source"
 ```
 
-### HQ/LQ Versions (Different Branches)
+### Monorepo (Multiple Resources)
 
-For resources with multiple quality levels:
+For repositories containing multiple FiveM resources:
+
+```
+my-resources/
+├── resource-a/
+│   └── fxmanifest.lua
+├── resource-b/
+│   └── fxmanifest.lua
+└── .github/workflows/
+    └── upload.yml
+```
 
 ```yaml
-- uses: actions/checkout@v4
-  with:
-    fetch-depth: 0
-
-- name: Upload to CFX Portal
+- name: Upload Resource A
   uses: luman-studio/cfx-portal-upload@main
   with:
     cookie: ${{ secrets.FORUM_COOKIE }}
-    hq: |
-      asset_name: "my-resource-hq"
-      branch: "main"
-    lq: |
-      asset_name: "my-resource-lq"
-      branch: "low-quality"
-```
+    resourcePath: 'resource-a'
+    escrowed: |
+      asset_name: "resource-a"
 
-> **Note:** `fetch-depth: 0` is required to access other branches.
+- name: Upload Resource B
+  uses: luman-studio/cfx-portal-upload@main
+  with:
+    cookie: ${{ secrets.FORUM_COOKIE }}
+    resourcePath: 'resource-b'
+    escrowed: |
+      asset_name: "resource-b"
+```
 
 <br>
 
@@ -141,14 +150,13 @@ For resources with multiple quality levels:
 
 ### Action Inputs
 
-| Parameter    | Type    | Required | Description                            |
-| ------------ | ------- | -------- | -------------------------------------- |
-| `cookie`     | string  | Yes      | Value of `_t` cookie from forum.cfx.re |
-| `escrowed`   | yaml    | No       | Escrowed version configuration         |
-| `openSource` | yaml    | No       | Open source version configuration      |
-| `hq`         | yaml    | No       | HQ version configuration               |
-| `lq`         | yaml    | No       | LQ version configuration               |
-| `skipUpload` | boolean | No       | Skip upload, authenticate only         |
+| Parameter      | Type    | Required | Description                             |
+| -------------- | ------- | -------- | --------------------------------------- |
+| `cookie`       | string  | Yes      | Value of `_t` cookie from forum.cfx.re  |
+| `escrowed`     | yaml    | No       | Escrowed version configuration          |
+| `openSource`   | yaml    | No       | Open source version configuration       |
+| `resourcePath` | string  | No       | Path to resource folder (for monorepos) |
+| `skipUpload`   | boolean | No       | Skip upload, authenticate only          |
 
 ### Version Configuration
 
@@ -156,7 +164,6 @@ For resources with multiple quality levels:
 | ------------ | ----------------------------------------- |
 | `asset_name` | Asset name on the portal (case-sensitive) |
 | `asset_id`   | Asset ID (alternative to asset_name)      |
-| `branch`     | Git branch to use (only for hq/lq)        |
 
 <br>
 

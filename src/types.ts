@@ -27,7 +27,6 @@ export enum Urls {
 export interface AssetConfig {
   asset_id?: string
   asset_name?: string
-  branch?: string
 }
 
 export type VersionType = 'escrowed' | 'opensource'
@@ -35,22 +34,18 @@ export type VersionType = 'escrowed' | 'opensource'
 export interface VersionConfig {
   type: VersionType
   assetName: string
+  resourcePath?: string
 }
 
 export interface BuildOptions {
   createEscrowed: boolean
   createOpenSource: boolean
-  createHq: boolean
-  createLq: boolean
   escrowedConfig?: AssetConfig
   openSourceConfig?: AssetConfig
-  hqConfig?: AssetConfig
-  lqConfig?: AssetConfig
+  resourcePath?: string
 }
 
 export interface ZipPaths {
   escrowed?: string
   openSource?: string
-  hq?: string
-  lq?: string
 }

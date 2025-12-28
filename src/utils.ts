@@ -115,12 +115,16 @@ function copyRecursivelyFiltered(
 /**
  * Copies workspace to destination directory, excluding system dirs and archives
  * @param destDir Destination directory path
+ * @param resourcePath Optional subdirectory within workspace to copy from
  */
-function copyWorkspaceToDir(destDir: string): void {
+function copyWorkspaceToDir(destDir: string, resourcePath?: string): void {
   const workspacePath = getEnv('GITHUB_WORKSPACE')
+  const sourcePath = resourcePath
+    ? path.join(workspacePath, resourcePath)
+    : workspacePath
   ensureDirectory(destDir)
 
-  const entries = fs.readdirSync(workspacePath)
+  const entries = fs.readdirSync(sourcePath)
   for (const entry of entries) {
     if (EXCLUDE_DIRS.includes(entry)) {
       continue
@@ -130,7 +134,7 @@ function copyWorkspaceToDir(destDir: string): void {
       continue
     }
 
-    const srcPath = path.join(workspacePath, entry)
+    const srcPath = path.join(sourcePath, entry)
     const destPath = path.join(destDir, entry)
     const stats = fs.statSync(srcPath)
 
@@ -239,21 +243,29 @@ function updateFxManifestVersion(fxmanifestPath: string): void {
  * @returns Path to the created ZIP file
  */
 async function createResourceVersion(config: VersionConfig): Promise<string> {
-  const { type } = config
+  const { type, resourcePath } = config
   const workspacePath = getEnv('GITHUB_WORKSPACE')
-  const workspaceName = path.basename(workspacePath)
+
+  // If resourcePath is specified, use it as the source directory
+  const sourcePath = resourcePath
+    ? path.join(workspacePath, resourcePath)
+    : workspacePath
+  const resourceName = path.basename(sourcePath)
 
   const dirName = type === 'escrowed' ? 'escrowed' : 'open-source'
   const targetDir = path.join(workspacePath, dirName)
   const zipSuffix = type === 'escrowed' ? 'escrowed' : 'opensource'
 
   core.info(`Creating ${type} version...`)
+  if (resourcePath) {
+    core.info(`Using resource path: ${resourcePath}`)
+  }
 
   // Build web/dui if exists
-  await buildWebAndDui()
+  await buildWebAndDui(resourcePath)
 
-  // Copy workspace to target directory
-  copyWorkspaceToDir(targetDir)
+  // Copy source to target directory
+  copyWorkspaceToDir(targetDir, resourcePath)
 
   // Update fxmanifest.lua version (only if git tag exists)
   const fxmanifestPath = path.join(targetDir, 'fxmanifest.lua')
@@ -267,8 +279,8 @@ async function createResourceVersion(config: VersionConfig): Promise<string> {
   // For escrowed: don't touch escrow_ignore - author controls it in fxmanifest.lua
 
   // Create ZIP
-  const zipPath = `${workspaceName}.${zipSuffix}.zip`
-  return await zipDirectory(targetDir, zipPath, workspaceName)
+  const zipPath = `${resourceName}.${zipSuffix}.zip`
+  return await zipDirectory(targetDir, zipPath, resourceName)
 }
 
 // ============================================================================
@@ -486,11 +498,15 @@ export function deleteIfExists(_path: string): void {
 
 /**
  * Builds web and DUI if they exist
+ * @param resourcePath Optional subdirectory within workspace
  */
-async function buildWebAndDui(): Promise<void> {
+async function buildWebAndDui(resourcePath?: string): Promise<void> {
   const workspacePath = getEnv('GITHUB_WORKSPACE')
+  const basePath = resourcePath
+    ? path.join(workspacePath, resourcePath)
+    : workspacePath
 
-  const webPath = path.join(workspacePath, 'web')
+  const webPath = path.join(basePath, 'web')
   if (fs.existsSync(webPath)) {
     core.info('🔨 Building web files...')
     const { spawn } = require('child_process')
@@ -525,7 +541,7 @@ async function buildWebAndDui(): Promise<void> {
     })
   }
 
-  const duiPath = path.join(workspacePath, 'dui')
+  const duiPath = path.join(basePath, 'dui')
   if (fs.existsSync(duiPath)) {
     core.info('🔨 Building DUI files...')
     const { spawn } = require('child_process')
@@ -549,11 +565,7 @@ async function buildWebAndDui(): Promise<void> {
             if (buildCode === 0) {
               // Copy DUI build files
               const duiBuildPath = path.join(duiPath, 'build')
-              const targetDuiBuildPath = path.join(
-                workspacePath,
-                'dui',
-                'build'
-              )
+              const targetDuiBuildPath = path.join(basePath, 'dui', 'build')
 
               if (fs.existsSync(duiBuildPath)) {
                 if (!fs.existsSync(targetDuiBuildPath)) {
@@ -582,163 +594,17 @@ async function buildWebAndDui(): Promise<void> {
 }
 
 /**
- * Checkout a specific branch
- * @param branchName The name of the branch to checkout
- */
-async function checkoutBranch(branchName: string): Promise<void> {
-  const workspacePath = getEnv('GITHUB_WORKSPACE')
-  core.info(`🔀 Checking out branch: ${branchName}`)
-
-  const { spawn } = require('child_process')
-
-  // Reset any local changes first
-  await new Promise<void>((resolve, reject) => {
-    const resetProcess = spawn('git', ['reset', '--hard'], {
-      cwd: workspacePath,
-      stdio: 'inherit',
-      shell: true
-    })
-
-    resetProcess.on('close', (code: number | null) => {
-      if (code === 0) {
-        core.info('✅ Reset local changes')
-        resolve()
-      } else {
-        reject(new Error(`Git reset failed with code ${code}`))
-      }
-    })
-  })
-
-  // Clean untracked files
-  await new Promise<void>((resolve, reject) => {
-    const cleanProcess = spawn('git', ['clean', '-fd'], {
-      cwd: workspacePath,
-      stdio: 'inherit',
-      shell: true
-    })
-
-    cleanProcess.on('close', (code: number | null) => {
-      if (code === 0) {
-        core.info('✅ Cleaned untracked files')
-        resolve()
-      } else {
-        // Clean can fail if there's nothing to clean, that's ok
-        resolve()
-      }
-    })
-  })
-
-  // Fetch the branch
-  await new Promise<void>((resolve, reject) => {
-    const gitProcess = spawn('git', ['fetch', 'origin', branchName], {
-      cwd: workspacePath,
-      stdio: 'inherit',
-      shell: true
-    })
-
-    gitProcess.on('close', (code: number | null) => {
-      if (code === 0) {
-        const checkoutProcess = spawn('git', ['checkout', branchName], {
-          cwd: workspacePath,
-          stdio: 'inherit',
-          shell: true
-        })
-
-        checkoutProcess.on('close', (checkoutCode: number | null) => {
-          if (checkoutCode === 0) {
-            core.info(`✅ Checked out branch: ${branchName}`)
-            resolve()
-          } else {
-            reject(new Error(`Git checkout failed with code ${checkoutCode}`))
-          }
-        })
-      } else {
-        reject(new Error(`Git fetch failed with code ${code}`))
-      }
-    })
-  })
-}
-
-/**
- * Creates HQ version of the asset
- * @param _assetName The name of the asset (unused, kept for API compatibility)
- * @param branch The branch to checkout (defaults to 'main')
- * @returns Path to the HQ zip file
- */
-export async function createHQVersion(
-  _assetName: string,
-  branch: string = 'main'
-): Promise<string> {
-  core.info(`📦 Creating HQ version from branch: ${branch}`)
-
-  // Checkout the HQ branch
-  await checkoutBranch(branch)
-
-  const workspacePath = getEnv('GITHUB_WORKSPACE')
-  const workspaceName = path.basename(workspacePath)
-  // Save ZIP outside workspace to prevent git clean from removing it
-  const zipPath = path.join(workspacePath, '..', `${workspaceName}.hq.zip`)
-
-  // Exclude Git and unnecessary files from ZIP
-  const excludePaths = [
-    '.git',
-    '.github',
-    '.vscode',
-    'node_modules',
-    '.gitignore',
-    '.gitattributes'
-  ]
-  await zipDirectory(workspacePath, zipPath, workspaceName, excludePaths)
-  core.info(`✅ HQ version created: ${zipPath}`)
-
-  return zipPath
-}
-
-/**
- * Creates LQ version of the asset
- * @param _assetName The name of the asset (unused, kept for API compatibility)
- * @param branch The branch to checkout (defaults to 'low-quality')
- * @returns Path to the LQ zip file
- */
-export async function createLQVersion(
-  _assetName: string,
-  branch: string = 'low-quality'
-): Promise<string> {
-  core.info(`📦 Creating LQ version from branch: ${branch}`)
-
-  // Checkout the LQ branch
-  await checkoutBranch(branch)
-
-  const workspacePath = getEnv('GITHUB_WORKSPACE')
-  const workspaceName = path.basename(workspacePath)
-  // Save ZIP outside workspace to prevent git clean from removing it
-  const zipPath = path.join(workspacePath, '..', `${workspaceName}.lq.zip`)
-
-  // Exclude Git and unnecessary files from ZIP
-  const excludePaths = [
-    '.git',
-    '.github',
-    '.vscode',
-    'node_modules',
-    '.gitignore',
-    '.gitattributes'
-  ]
-  await zipDirectory(workspacePath, zipPath, workspaceName, excludePaths)
-  core.info(`✅ LQ version created: ${zipPath}`)
-
-  return zipPath
-}
-
-/**
  * Creates escrowed version of the asset
  * Uses the unified createResourceVersion function
  */
 export async function createEscrowedVersion(
-  _assetName: string
+  _assetName: string,
+  resourcePath?: string
 ): Promise<string> {
   return createResourceVersion({
     type: 'escrowed',
-    assetName: _assetName
+    assetName: _assetName,
+    resourcePath
   })
 }
 
@@ -747,11 +613,13 @@ export async function createEscrowedVersion(
  * Uses the unified createResourceVersion function
  */
 export async function createOpenSourceVersion(
-  _assetName: string
+  _assetName: string,
+  resourcePath?: string
 ): Promise<string> {
   return createResourceVersion({
     type: 'opensource',
-    assetName: _assetName
+    assetName: _assetName,
+    resourcePath
   })
 }
 
@@ -836,13 +704,19 @@ export async function createVersions(
   if (options.createEscrowed) {
     const escrowedName =
       options.escrowedConfig?.asset_name || `${assetName}-escrowed`
-    zipPaths.escrowed = await createEscrowedVersion(escrowedName)
+    zipPaths.escrowed = await createEscrowedVersion(
+      escrowedName,
+      options.resourcePath
+    )
   }
 
   if (options.createOpenSource) {
     const openSourceName =
       options.openSourceConfig?.asset_name || `${assetName}-source`
-    zipPaths.openSource = await createOpenSourceVersion(openSourceName)
+    zipPaths.openSource = await createOpenSourceVersion(
+      openSourceName,
+      options.resourcePath
+    )
   }
 
   return zipPaths

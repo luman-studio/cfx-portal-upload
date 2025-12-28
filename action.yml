@@ -40,22 +40,16 @@ inputs:
   zipPath:
     description: 'Path to pre-made ZIP file'
     required: false
-  # Script versions (escrowed + open source)
-  escrowed:
+  resourcePath:
     description:
-      'Escrowed version config (YAML: asset_id, asset_name, escrow_ignore)'
+      'Path to resource folder (for monorepos with multiple resources)'
+    required: false
+  # Version configurations
+  escrowed:
+    description: 'Escrowed version config (YAML: asset_id, asset_name)'
     required: false
   openSource:
     description: 'Open source version config (YAML: asset_id, asset_name)'
-    required: false
-  # Asset versions (HQ + LQ from different branches)
-  hq:
-    description:
-      'High quality version config (YAML: asset_id, asset_name, branch)'
-    required: false
-  lq:
-    description:
-      'Low quality version config (YAML: asset_id, asset_name, branch)'
     required: false
 
 runs:
