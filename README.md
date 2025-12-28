@@ -1,75 +1,95 @@
 # CFX Portal Upload Action
 
-[![GitHub Super-Linter](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/linter.yml/badge.svg)](https://github.com/super-linter/super-linter)
-![CI](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/ci.yml/badge.svg)
-[![Check dist/](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/check-dist.yml/badge.svg)](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/check-dist.yml)
-[![CodeQL](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/codeql-analysis.yml)
-[![Coverage](./badges/coverage.svg)](./badges/coverage.svg)
+GitHub Action for automatically uploading FiveM resources to [portal.cfx.re](https://portal.cfx.re).
 
-In the past, using CFX Keymaster made it impossible to build CI/CD pipelines for
-Escrow Resources due to the Cloudflare Bot Challenge.
+## Quick Start
 
-However, CFX has now created a new platform called **"Portal"**, which is still
-secured via Cloudflare but operates in a less restrictive attack mode, enabling
-its use within a GitHub Action.
+### Step 1: Create Asset on CFX Portal
 
-## How to Use It
+1. Go to [portal.cfx.re](https://portal.cfx.re)
+2. Create an asset for your resource
+3. Remember the **asset name** - you'll need it in the config
 
-To use this action, you need to authenticate via the forum using a cookie until
-CFX provides API keys for this action.
+### Step 2: Get Authentication Cookie
 
-1. Go to the **CFX Forum** and inspect the site using your browser's developer
-   tools.
-1. Navigate to the **Cookies** section and search for `_t`.
-1. Copy the value of this cookie and save it in GitHub Secrets as
-   `FORUM_COOKIE`.
-1. Use the action in your workflow (remember to
-   [checkout](https://github.com/actions/checkout) before!):
+1. Open [forum.cfx.re](https://forum.cfx.re) and log in
+2. Open browser DevTools (F12)
+3. Go to **Application** → **Cookies** → `https://forum.cfx.re`
+4. Find cookie named `_t` and copy its **value**
 
-   ```yaml
-   - name: Upload Escrow Resource
-     uses: luman-studio/cfx-portal-upload
-     with:
-       cookie: ${{ secrets.FORUM_COOKIE }}
-       assetName: 'my_asset'
-   ```
+### Step 3: Add Secret to GitHub
 
-> [!IMPORTANT]
->
-> When you log out of the forum, the cookie will become invalid, causing the
-> action to fail. After configuring the secret, you should clear the cookie from
-> your browser and log in again to avoid potential issues.
+1. Open your repository on GitHub
+2. Go to **Settings** → **Secrets and variables** → **Actions**
+3. Click **New repository secret**
+4. Name: `FORUM_COOKIE`
+5. Value: paste the copied `_t` cookie value
 
-## Input Parameters
+### Step 4: Create Workflow File
 
-| Key        | Type     | Value                                                              | Description                                                                                                                                                                          |
-| ---------- | -------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| cookie     | string   | The Forum Cookie to authenticate                                   | Go to [forum.cfx.re](https://forum.cfx.re) and inspect the page with your browser's dev tools. Then search for the `_t` cookie.                                                      |
-| makeZip    | boolean? | Automatically ZIP the full repository to upload it (default: true) | This will remove the folders `.git/`/`.github/`/`.vscode/` from the repository before zipping.                                                                                       |
-| assetName  | string   | The asset name to re-upload                                        | This is the name of the asset you want to re-upload.                                                                                                                                 |
-| assetId    | number   | The Asset ID, which is a unique ID in the portal                   | The Asset ID can be found at [portal.cfx.re](https://portal.cfx.re/assets/created-assets). ![image](https://github.com/user-attachments/assets/4176b7e7-cfbb-4e14-a488-04c4301f6082) |
-| zipPath    | string?  | The path to your ZIP file that should be uploaded                  | This is the file location of your packed ZIP file inside the Workflow Container, usually stored in `/home/...`.                                                                      |
-| skipUpload | boolean? | Skip the upload and only log in to the portal                      | This will skip the asset upload to the portal and only go through the login process. Useful in cron jobs to prevent the cookie from getting invalidated due to inactivity            |
-| maxRetries | number?  | The maximum number of retries. (default: 3)                        | This is the maximum number of times the login will be retried if it fails.                                                                                                           |
-| chunkSize  | number?  | How large one chunk is for upload. Default: 2097152 bytes          |                                                                                                                                                                                      |
-| escrowed   | yaml?    | Escrowed version configuration                                     | YAML object with `asset_id` and `asset_name`. See examples below.                                                                                                                    |
-| openSource | yaml?    | Open source version configuration                                  | YAML object with `asset_id` and `asset_name`. See examples below.                                                                                                                    |
-| hq         | yaml?    | High quality version configuration                                 | YAML object with `asset_id`, `asset_name`, and `branch` (default: "main"). See examples below.                                                                                       |
-| lq         | yaml?    | Low quality version configuration                                  | YAML object with `asset_id`, `asset_name`, and `branch` (default: "low-quality"). See examples below.                                                                                |
+Create `.github/workflows/upload.yml` in your repository:
 
-> [!NOTE]
->
-> `?` after the type indicates that the parameter is optional. if no assetName  
-> or assetId is provided, the repository name will be used as assetName.
+```yaml
+name: Upload to CFX Portal
 
-## Multi-Version Upload Support
+on:
+  push:
+    branches: [main, master]
 
-This action supports uploading multiple versions of your resource in a single
-workflow run:
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-### Escrowed and Open Source Versions
+      - name: Upload to CFX Portal
+        uses: luman-studio/cfx-portal-upload@main
+        with:
+          cookie: ${{ secrets.FORUM_COOKIE }}
+          escrowed: |
+            asset_name: "your-resource-name"
+```
 
-Upload both escrowed and open source versions from the current branch:
+### Step 5: Configure fxmanifest.lua
+
+In your `fxmanifest.lua`, specify which files should NOT be encrypted:
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+
+name 'My Resource'
+author 'Your Name'
+version '1.0.0'
+description 'Description of your resource'
+
+-- Files that will remain open (not encrypted)
+escrow_ignore {
+  'config.lua',
+  'shared/config.lua',
+  'locales/*.lua',
+}
+
+client_script 'client/*.lua'
+server_script 'server/*.lua'
+shared_script 'shared/*.lua'
+```
+
+### Step 6: Push to Main
+
+```bash
+git add .
+git commit -m "My changes"
+git push origin main
+```
+
+After pushing, GitHub Action will automatically upload the resource to the portal.
+
+---
+
+## Configuration Examples
+
+### Escrowed + OpenSource Versions
 
 ```yaml
 - name: Upload to CFX Portal
@@ -77,133 +97,119 @@ Upload both escrowed and open source versions from the current branch:
   with:
     cookie: ${{ secrets.FORUM_COOKIE }}
     escrowed: |
-      asset_id: "534535"
-      asset_name: "my-resource-escrowed"
+      asset_name: "my-resource"
     openSource: |
-      asset_id: "534536"
       asset_name: "my-resource-source"
 ```
 
-> [!NOTE]
->
-> The `escrow_ignore` directive should be configured in your `fxmanifest.lua` file.
-> The action respects your existing `escrow_ignore` configuration for escrowed versions.
-> For open source versions, all files are automatically set to be unobfuscated.
+### HQ/LQ Versions (Different Branches)
 
-### High Quality (HQ) and Low Quality (LQ) Versions
-
-Upload different quality versions from different branches (e.g., `main` for HQ
-and `low-quality` for LQ):
+For resources with different quality levels (e.g., different textures):
 
 ```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0  # Important! Required to access other branches
+
 - name: Upload to CFX Portal
   uses: luman-studio/cfx-portal-upload@main
   with:
     cookie: ${{ secrets.FORUM_COOKIE }}
     hq: |
-      asset_id: "534537"
       asset_name: "my-resource-hq"
       branch: "main"
     lq: |
-      asset_id: "534538"
       asset_name: "my-resource-lq"
       branch: "low-quality"
 ```
 
-> [!IMPORTANT]
->
-> When using HQ/LQ versions, make sure to checkout with `fetch-depth: 0` to
-> fetch all branches:
->
-> ```yaml
-> - name: Checkout code
->   uses: actions/checkout@v4
->   with:
->     fetch-depth: 0
-> ```
+---
 
-### Combining All Options
+## Parameters
 
-You can combine escrowed, open source, HQ, and LQ versions in a single workflow:
+| Parameter  | Type   | Description |
+|------------|--------|-------------|
+| `cookie`   | string | **Required.** Value of `_t` cookie from forum.cfx.re |
+| `escrowed` | yaml   | Escrowed version configuration |
+| `openSource` | yaml | Open source version configuration |
+| `hq`       | yaml   | HQ version configuration (with branch) |
+| `lq`       | yaml   | LQ version configuration (with branch) |
+| `skipUpload` | boolean | Skip upload (authentication only) |
 
-```yaml
-- name: Upload to CFX Portal
-  uses: luman-studio/cfx-portal-upload@main
-  with:
-    cookie: ${{ secrets.FORUM_COOKIE }}
-    escrowed: |
-      asset_id: "534535"
-      asset_name: "my-resource-escrowed"
-    openSource: |
-      asset_id: "534536"
-      asset_name: "my-resource-source"
-    hq: |
-      asset_id: "534537"
-      asset_name: "my-resource-hq"
-      branch: "main"
-    lq: |
-      asset_id: "534538"
-      asset_name: "my-resource-lq"
-      branch: "low-quality"
+### Version Parameters (escrowed, openSource, hq, lq)
+
+| Parameter   | Description |
+|-------------|-------------|
+| `asset_name` | Asset name on the portal (exactly as you named it when creating) |
+| `asset_id`  | Asset ID (alternative to asset_name) |
+| `branch`    | Git branch (only for hq/lq) |
+
+---
+
+## How escrow_ignore Works
+
+The action **does not modify** your `escrow_ignore` configuration for escrowed versions. You fully control which files to encrypt through your `fxmanifest.lua`.
+
+For **openSource** versions, the action automatically sets `escrow_ignore { '**/*' }` - all files remain open.
+
+**Example fxmanifest.lua:**
+
+```lua
+-- These files will NOT be encrypted
+escrow_ignore {
+  'config.lua',           -- configuration
+  'shared/config.lua',    -- shared configuration
+  'locales/*.lua',        -- all localization files
+}
 ```
 
-## Features
+---
 
-- 🚀 **Automated Building**: Automatically builds `web` and `dui` folders using
-  pnpm before upload
-- 📦 **Multi-Version Support**: Upload escrowed, open source, HQ, and LQ
-  versions in one workflow
-- 🔀 **Branch-Based Versions**: Create different quality versions from different
-  Git branches
-- 🔒 **Author-Controlled Escrow**: Your `escrow_ignore` directive in
-  `fxmanifest.lua` is respected - you control what gets encrypted
-- 📝 **Version from Git Tags**: Automatically updates `version` in
-  `fxmanifest.lua` when releasing with a git tag (e.g., `v1.2.3` → `1.2.3`)
-- 📤 **Chunked Upload**: Supports large file uploads with configurable chunk
-  size (default 2MB)
-- 🔄 **Cookie Refresh**: Scheduled workflow support to keep authentication
-  active
+## Keeping Cookie Active
 
-## Skip Upload
-
-If you haven't uploaded an asset in a long time, the cookie will become invalid
-due to inactivity. To prevent this, you can use a cron job to log in to the
-portal and refresh the cookie.
+Cookie becomes invalid due to inactivity. Add a cron job:
 
 ```yaml
 name: Refresh Cookie
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0 * * *'  # Every day at midnight
 
 jobs:
-  refresh_cookie:
-    name: Login to Portal
+  refresh:
     runs-on: ubuntu-latest
     steps:
-      - name: Run CFX Portal Upload
+      - name: Keep cookie alive
         uses: luman-studio/cfx-portal-upload@main
         with:
           cookie: ${{ secrets.FORUM_COOKIE }}
           skipUpload: true
 ```
 
-## How to Contribute
+---
 
-If you want to contribute to this project, you can fork the repository and
-create a pull request:
+## Troubleshooting
 
-1. Fork the repository.
-1. Clone your forked repository.
-1. Create a new branch.
-1. Make your changes.
-1. Push the changes to your fork.
-1. Create a pull request.
+### "No assets found matching..."
+- Check that asset name in config **exactly matches** the name on the portal
+- Names are case-sensitive
 
-Contributing helps the CFX community and improves the experience for everyone.
+### "Authentication failed"
+- Cookie expired - get a new one from forum.cfx.re
+- After getting the cookie, **do not log out** from the forum. You should clear the cookie from your browser and log in again to avoid potential issues.
 
-> [!NOTE]
->
-> Currently, the project does not have complete unit test coverage. If you want
-> to contribute, adding unit tests would be a great starting point.
+### "asset must not contain an archive"
+- Remove .zip, .rar, .7z files from the repository - they are automatically excluded, but better not to store them
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a branch for your changes
+3. Make changes
+4. Create a Pull Request
+
+[![GitHub Super-Linter](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/linter.yml/badge.svg)](https://github.com/super-linter/super-linter)
+![CI](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/ci.yml/badge.svg)
