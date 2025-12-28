@@ -480,28 +480,32 @@ export async function createEscrowedVersion(
   const escrowedDir = path.join(workspacePath, 'escrowed')
 
   await createDirectory(escrowedDir)
-  await createDirectory(path.join(escrowedDir, 'web', 'build'))
 
-  const foldersToInclude = ['client', 'shared', 'locales', 'server']
-  const filesToInclude = ['fxmanifest.lua', 'init.lua']
+  // Exclude directories that should not be included in the escrowed version
+  const excludeDirs = [
+    '.git',
+    '.github',
+    '.vscode',
+    'node_modules',
+    'escrowed',
+    'open-source'
+  ]
 
-  for (const folder of foldersToInclude) {
-    const srcPath = path.join(workspacePath, folder)
-    if (fs.existsSync(srcPath)) {
-      copyRecursively(srcPath, path.join(escrowedDir, folder))
+  // Copy all files and folders from workspace to escrowed directory
+  const entries = fs.readdirSync(workspacePath)
+  for (const entry of entries) {
+    if (excludeDirs.includes(entry)) {
+      continue
     }
-  }
+    const srcPath = path.join(workspacePath, entry)
+    const destPath = path.join(escrowedDir, entry)
+    const stats = fs.statSync(srcPath)
 
-  for (const file of filesToInclude) {
-    const srcPath = path.join(workspacePath, file)
-    if (fs.existsSync(srcPath)) {
-      fs.copyFileSync(srcPath, path.join(escrowedDir, file))
+    if (stats.isDirectory()) {
+      copyRecursively(srcPath, destPath, ['node_modules'])
+    } else if (stats.isFile()) {
+      fs.copyFileSync(srcPath, destPath)
     }
-  }
-
-  const webBuildPath = path.join(workspacePath, 'web', 'build')
-  if (fs.existsSync(webBuildPath)) {
-    copyRecursively(webBuildPath, path.join(escrowedDir, 'web', 'build'))
   }
 
   const fxmanifestPath = path.join(escrowedDir, 'fxmanifest.lua')
@@ -545,28 +549,32 @@ export async function createOpenSourceVersion(
   const openSourceDir = path.join(workspacePath, 'open-source')
 
   await createDirectory(openSourceDir)
-  await createDirectory(path.join(openSourceDir, 'web'))
 
-  const foldersToInclude = ['client', 'shared', 'locales', 'server']
-  const filesToInclude = ['fxmanifest.lua', 'init.lua']
+  // Exclude directories that should not be included in the open-source version
+  const excludeDirs = [
+    '.git',
+    '.github',
+    '.vscode',
+    'node_modules',
+    'escrowed',
+    'open-source'
+  ]
 
-  for (const folder of foldersToInclude) {
-    const srcPath = path.join(workspacePath, folder)
-    if (fs.existsSync(srcPath)) {
-      copyRecursively(srcPath, path.join(openSourceDir, folder))
+  // Copy all files and folders from workspace to open-source directory
+  const entries = fs.readdirSync(workspacePath)
+  for (const entry of entries) {
+    if (excludeDirs.includes(entry)) {
+      continue
     }
-  }
+    const srcPath = path.join(workspacePath, entry)
+    const destPath = path.join(openSourceDir, entry)
+    const stats = fs.statSync(srcPath)
 
-  for (const file of filesToInclude) {
-    const srcPath = path.join(workspacePath, file)
-    if (fs.existsSync(srcPath)) {
-      fs.copyFileSync(srcPath, path.join(openSourceDir, file))
+    if (stats.isDirectory()) {
+      copyRecursively(srcPath, destPath, ['node_modules'])
+    } else if (stats.isFile()) {
+      fs.copyFileSync(srcPath, destPath)
     }
-  }
-
-  const webPath = path.join(workspacePath, 'web')
-  if (fs.existsSync(webPath)) {
-    copyRecursively(webPath, path.join(openSourceDir, 'web'), ['node_modules'])
   }
 
   const fxmanifestPath = path.join(openSourceDir, 'fxmanifest.lua')
@@ -575,12 +583,11 @@ export async function createOpenSourceVersion(
     path.basename(getEnv('GITHUB_WORKSPACE'))
   )
 
+  // For open-source, we want to ignore escrow for all files
   if (fs.existsSync(fxmanifestPath)) {
     const escrowIgnore = `
 escrow_ignore {
-  '/*',
-  '/**/*',
-  '/**/**/*',
+  '**/*',
 }
 `
     fs.appendFileSync(fxmanifestPath, escrowIgnore)
