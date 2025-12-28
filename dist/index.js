@@ -297180,11 +297180,16 @@ async function createEscrowedVersion(assetName, ignoreFiles) {
         if (excludeDirs.includes(entry)) {
             continue;
         }
+        // Skip archive files
+        if (isArchive(entry)) {
+            core.debug(`Skipping archive file: ${entry}`);
+            continue;
+        }
         const srcPath = path_2.default.join(workspacePath, entry);
         const destPath = path_2.default.join(escrowedDir, entry);
         const stats = fs_1.default.statSync(srcPath);
         if (stats.isDirectory()) {
-            copyRecursively(srcPath, destPath, ['node_modules']);
+            copyRecursively(srcPath, destPath, ['node_modules'], true);
         }
         else if (stats.isFile()) {
             fs_1.default.copyFileSync(srcPath, destPath);
@@ -297235,11 +297240,16 @@ async function createOpenSourceVersion(assetName) {
         if (excludeDirs.includes(entry)) {
             continue;
         }
+        // Skip archive files
+        if (isArchive(entry)) {
+            core.debug(`Skipping archive file: ${entry}`);
+            continue;
+        }
         const srcPath = path_2.default.join(workspacePath, entry);
         const destPath = path_2.default.join(openSourceDir, entry);
         const stats = fs_1.default.statSync(srcPath);
         if (stats.isDirectory()) {
-            copyRecursively(srcPath, destPath, ['node_modules']);
+            copyRecursively(srcPath, destPath, ['node_modules'], true);
         }
         else if (stats.isFile()) {
             fs_1.default.copyFileSync(srcPath, destPath);
@@ -297309,13 +297319,34 @@ async function createDirectory(dirPath) {
         fs_1.default.mkdirSync(dirPath, { recursive: true });
     }
 }
+// File extensions that are considered archives and should be excluded
+const ARCHIVE_EXTENSIONS = [
+    '.zip',
+    '.rar',
+    '.7z',
+    '.tar',
+    '.gz',
+    '.tgz',
+    '.bz2',
+    '.xz'
+];
+/**
+ * Check if a file is an archive based on its extension
+ * @param filename The filename to check
+ * @returns true if the file is an archive
+ */
+function isArchive(filename) {
+    const ext = path_2.default.extname(filename).toLowerCase();
+    return ARCHIVE_EXTENSIONS.includes(ext);
+}
 /**
  * Copies files and directories recursively
  * @param src Source path
  * @param dest Destination path
  * @param excludeDirs Directories to exclude
+ * @param excludeArchives Whether to exclude archive files (default: true)
  */
-function copyRecursively(src, dest, excludeDirs = []) {
+function copyRecursively(src, dest, excludeDirs = [], excludeArchives = true) {
     const stats = fs_1.default.statSync(src);
     if (stats.isDirectory()) {
         if (excludeDirs.includes(path_2.default.basename(src))) {
@@ -297329,10 +297360,20 @@ function copyRecursively(src, dest, excludeDirs = []) {
             if (excludeDirs.includes(entry)) {
                 continue;
             }
-            copyRecursively(path_2.default.join(src, entry), path_2.default.join(dest, entry), excludeDirs);
+            // Skip archive files if excludeArchives is true
+            if (excludeArchives && isArchive(entry)) {
+                core.debug(`Skipping archive file: ${entry}`);
+                continue;
+            }
+            copyRecursively(path_2.default.join(src, entry), path_2.default.join(dest, entry), excludeDirs, excludeArchives);
         }
     }
     else if (stats.isFile()) {
+        // Skip archive files if excludeArchives is true
+        if (excludeArchives && isArchive(path_2.default.basename(src))) {
+            core.debug(`Skipping archive file: ${src}`);
+            return;
+        }
         fs_1.default.copyFileSync(src, dest);
     }
 }

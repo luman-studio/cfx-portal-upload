@@ -497,12 +497,17 @@ export async function createEscrowedVersion(
     if (excludeDirs.includes(entry)) {
       continue
     }
+    // Skip archive files
+    if (isArchive(entry)) {
+      core.debug(`Skipping archive file: ${entry}`)
+      continue
+    }
     const srcPath = path.join(workspacePath, entry)
     const destPath = path.join(escrowedDir, entry)
     const stats = fs.statSync(srcPath)
 
     if (stats.isDirectory()) {
-      copyRecursively(srcPath, destPath, ['node_modules'])
+      copyRecursively(srcPath, destPath, ['node_modules'], true)
     } else if (stats.isFile()) {
       fs.copyFileSync(srcPath, destPath)
     }
@@ -566,12 +571,17 @@ export async function createOpenSourceVersion(
     if (excludeDirs.includes(entry)) {
       continue
     }
+    // Skip archive files
+    if (isArchive(entry)) {
+      core.debug(`Skipping archive file: ${entry}`)
+      continue
+    }
     const srcPath = path.join(workspacePath, entry)
     const destPath = path.join(openSourceDir, entry)
     const stats = fs.statSync(srcPath)
 
     if (stats.isDirectory()) {
-      copyRecursively(srcPath, destPath, ['node_modules'])
+      copyRecursively(srcPath, destPath, ['node_modules'], true)
     } else if (stats.isFile()) {
       fs.copyFileSync(srcPath, destPath)
     }
@@ -659,16 +669,40 @@ async function createDirectory(dirPath: string): Promise<void> {
   }
 }
 
+// File extensions that are considered archives and should be excluded
+const ARCHIVE_EXTENSIONS = [
+  '.zip',
+  '.rar',
+  '.7z',
+  '.tar',
+  '.gz',
+  '.tgz',
+  '.bz2',
+  '.xz'
+]
+
+/**
+ * Check if a file is an archive based on its extension
+ * @param filename The filename to check
+ * @returns true if the file is an archive
+ */
+function isArchive(filename: string): boolean {
+  const ext = path.extname(filename).toLowerCase()
+  return ARCHIVE_EXTENSIONS.includes(ext)
+}
+
 /**
  * Copies files and directories recursively
  * @param src Source path
  * @param dest Destination path
  * @param excludeDirs Directories to exclude
+ * @param excludeArchives Whether to exclude archive files (default: true)
  */
 function copyRecursively(
   src: string,
   dest: string,
-  excludeDirs: string[] = []
+  excludeDirs: string[] = [],
+  excludeArchives: boolean = true
 ): void {
   const stats = fs.statSync(src)
 
@@ -686,13 +720,24 @@ function copyRecursively(
       if (excludeDirs.includes(entry)) {
         continue
       }
+      // Skip archive files if excludeArchives is true
+      if (excludeArchives && isArchive(entry)) {
+        core.debug(`Skipping archive file: ${entry}`)
+        continue
+      }
       copyRecursively(
         path.join(src, entry),
         path.join(dest, entry),
-        excludeDirs
+        excludeDirs,
+        excludeArchives
       )
     }
   } else if (stats.isFile()) {
+    // Skip archive files if excludeArchives is true
+    if (excludeArchives && isArchive(path.basename(src))) {
+      core.debug(`Skipping archive file: ${src}`)
+      return
+    }
     fs.copyFileSync(src, dest)
   }
 }
