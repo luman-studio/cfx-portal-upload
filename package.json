@@ -4,13 +4,13 @@
   "version": "0.0.0",
   "author": "",
   "private": true,
-  "homepage": "https://github.com/Tynopia/cfx-portal-upload",
+  "homepage": "https://github.com/luman-studio/cfx-portal-upload",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Tynopia/cfx-portal-upload.git"
+    "url": "git+https://github.com/luman-studio/cfx-portal-upload.git"
   },
   "bugs": {
-    "url": "https://github.com/Tynopia/cfx-portal-upload/issues"
+    "url": "https://github.com/luman-studio/cfx-portal-upload/issues"
   },
   "keywords": [
     "actions",

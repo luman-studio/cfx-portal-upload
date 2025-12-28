@@ -1,9 +1,9 @@
 # CFX Portal Upload Action
 
-[![GitHub Super-Linter](https://github.com/Tynopia/cfx-portal-upload/actions/workflows/linter.yml/badge.svg)](https://github.com/super-linter/super-linter)
-![CI](https://github.com/Tynopia/cfx-portal-upload/actions/workflows/ci.yml/badge.svg)
-[![Check dist/](https://github.com/Tynopia/cfx-portal-upload/actions/workflows/check-dist.yml/badge.svg)](https://github.com/Tynopia/cfx-portal-upload/actions/workflows/check-dist.yml)
-[![CodeQL](https://github.com/Tynopia/cfx-portal-upload/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/Tynopia/cfx-portal-upload/actions/workflows/codeql-analysis.yml)
+[![GitHub Super-Linter](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/linter.yml/badge.svg)](https://github.com/super-linter/super-linter)
+![CI](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/ci.yml/badge.svg)
+[![Check dist/](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/check-dist.yml/badge.svg)](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/check-dist.yml)
+[![CodeQL](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/luman-studio/cfx-portal-upload/actions/workflows/codeql-analysis.yml)
 [![Coverage](./badges/coverage.svg)](./badges/coverage.svg)
 
 In the past, using CFX Keymaster made it impossible to build CI/CD pipelines for
@@ -28,7 +28,7 @@ CFX provides API keys for this action.
 
    ```yaml
    - name: Upload Escrow Resource
-     uses: Tynopia/cfx-portal-upload
+     uses: luman-studio/cfx-portal-upload
      with:
        cookie: ${{ secrets.FORUM_COOKIE }}
        assetName: 'my_asset'
@@ -73,7 +73,7 @@ Upload both escrowed and open source versions from the current branch:
 
 ```yaml
 - name: Upload to CFX Portal
-  uses: Tynopia/cfx-portal-upload@main
+  uses: luman-studio/cfx-portal-upload@main
   with:
     cookie: ${{ secrets.FORUM_COOKIE }}
     escrowed: |
@@ -92,7 +92,7 @@ and `low-quality` for LQ):
 
 ```yaml
 - name: Upload to CFX Portal
-  uses: Tynopia/cfx-portal-upload@main
+  uses: luman-studio/cfx-portal-upload@main
   with:
     cookie: ${{ secrets.FORUM_COOKIE }}
     hq: |
@@ -125,7 +125,7 @@ You can combine escrowed, open source, HQ, and LQ versions in a single workflow:
 
 ```yaml
 - name: Upload to CFX Portal
-  uses: Tynopia/cfx-portal-upload@main
+  uses: luman-studio/cfx-portal-upload@main
   with:
     cookie: ${{ secrets.FORUM_COOKIE }}
     escrowed: |
@@ -181,7 +181,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run CFX Portal Upload
-        uses: Tynopia/cfx-portal-upload@main
+        uses: luman-studio/cfx-portal-upload@main
         with:
           cookie: ${{ secrets.FORUM_COOKIE }}
           skipUpload: true
