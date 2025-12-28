@@ -52,10 +52,10 @@ CFX provides API keys for this action.
 | skipUpload | boolean? | Skip the upload and only log in to the portal                      | This will skip the asset upload to the portal and only go through the login process. Useful in cron jobs to prevent the cookie from getting invalidated due to inactivity            |
 | maxRetries | number?  | The maximum number of retries. (default: 3)                        | This is the maximum number of times the login will be retried if it fails.                                                                                                           |
 | chunkSize  | number?  | How large one chunk is for upload. Default: 2097152 bytes          |                                                                                                                                                                                      |
-| escrowed   | yaml?    | Escrowed version configuration                                     | YAML object with `asset_id`, `asset_name`, and `escrow_ignore` array. See examples below.                                                                                            |
+| escrowed   | yaml?    | Escrowed version configuration                                     | YAML object with `asset_id` and `asset_name`. See examples below.                                                                                                                    |
 | openSource | yaml?    | Open source version configuration                                  | YAML object with `asset_id` and `asset_name`. See examples below.                                                                                                                    |
-| hq         | yaml?    | High quality version configuration                                 | YAML object with `asset_id`, `asset_name`, `branch` (default: "main"), and optional `escrow_ignore`. See examples below.                                                             |
-| lq         | yaml?    | Low quality version configuration                                  | YAML object with `asset_id`, `asset_name`, `branch` (default: "low-quality"), and optional `escrow_ignore`. See examples below.                                                      |
+| hq         | yaml?    | High quality version configuration                                 | YAML object with `asset_id`, `asset_name`, and `branch` (default: "main"). See examples below.                                                                                       |
+| lq         | yaml?    | Low quality version configuration                                  | YAML object with `asset_id`, `asset_name`, and `branch` (default: "low-quality"). See examples below.                                                                                |
 
 > [!NOTE]
 >
@@ -79,11 +79,16 @@ Upload both escrowed and open source versions from the current branch:
     escrowed: |
       asset_id: "534535"
       asset_name: "my-resource-escrowed"
-      escrow_ignore: ['init.lua', 'shared/config.lua', 'shared/utils.lua']
     openSource: |
       asset_id: "534536"
       asset_name: "my-resource-source"
 ```
+
+> [!NOTE]
+>
+> The `escrow_ignore` directive should be configured in your `fxmanifest.lua` file.
+> The action respects your existing `escrow_ignore` configuration for escrowed versions.
+> For open source versions, all files are automatically set to be unobfuscated.
 
 ### High Quality (HQ) and Low Quality (LQ) Versions
 
@@ -99,12 +104,10 @@ and `low-quality` for LQ):
       asset_id: "534537"
       asset_name: "my-resource-hq"
       branch: "main"
-      escrow_ignore: ['init.lua', 'shared/config.lua']
     lq: |
       asset_id: "534538"
       asset_name: "my-resource-lq"
       branch: "low-quality"
-      escrow_ignore: ['init.lua', 'shared/config.lua']
 ```
 
 > [!IMPORTANT]
@@ -131,7 +134,6 @@ You can combine escrowed, open source, HQ, and LQ versions in a single workflow:
     escrowed: |
       asset_id: "534535"
       asset_name: "my-resource-escrowed"
-      escrow_ignore: ['init.lua', 'shared/config.lua']
     openSource: |
       asset_id: "534536"
       asset_name: "my-resource-source"
@@ -153,10 +155,10 @@ You can combine escrowed, open source, HQ, and LQ versions in a single workflow:
   versions in one workflow
 - 🔀 **Branch-Based Versions**: Create different quality versions from different
   Git branches
-- 🔒 **Configurable Escrow**: Define which files should remain unobfuscated via
-  `escrow_ignore`
-- 📝 **Metadata Updates**: Automatically updates `fxmanifest.lua` with resource
-  name, author, version, and description
+- 🔒 **Author-Controlled Escrow**: Your `escrow_ignore` directive in
+  `fxmanifest.lua` is respected - you control what gets encrypted
+- 📝 **Version from Git Tags**: Automatically updates `version` in
+  `fxmanifest.lua` when releasing with a git tag (e.g., `v1.2.3` → `1.2.3`)
 - 📤 **Chunked Upload**: Supports large file uploads with configurable chunk
   size (default 2MB)
 - 🔄 **Cookie Refresh**: Scheduled workflow support to keep authentication

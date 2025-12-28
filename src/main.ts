@@ -159,20 +159,8 @@ export async function run(): Promise<void> {
             if (match) {
               const [, key, value] = match
               core.info(`  Found key: ${key}, value: ${value}`)
-              if (key === 'escrow_ignore') {
-                // Handle array syntax: ['item1', 'item2'] or "item1,item2"
-                if (value.includes('[') && value.includes(']')) {
-                  escrowedConfig[key] = value
-                    .replace(/[\[\]'"`]/g, '')
-                    .split(',')
-                    .map(s => s.trim())
-                } else {
-                  escrowedConfig[key] = value
-                    .replace(/[\"']/g, '')
-                    .split(',')
-                    .map(s => s.trim())
-                }
-              } else {
+              // Only parse asset_id, asset_name, branch
+              if (['asset_id', 'asset_name', 'branch'].includes(key)) {
                 escrowedConfig[key] = value.replace(/[\"']/g, '').trim()
               }
             }
@@ -197,7 +185,10 @@ export async function run(): Promise<void> {
             if (match) {
               const [, key, value] = match
               core.info(`  Found key: ${key}, value: ${value}`)
-              openSourceConfig[key] = value.replace(/[\"']/g, '').trim()
+              // Only parse asset_id, asset_name, branch
+              if (['asset_id', 'asset_name', 'branch'].includes(key)) {
+                openSourceConfig[key] = value.replace(/[\"']/g, '').trim()
+              }
             }
           }
           core.info(
@@ -227,19 +218,8 @@ export async function run(): Promise<void> {
             if (match) {
               const [, key, value] = match
               core.info(`  Found key: ${key}, value: ${value}`)
-              if (key === 'escrow_ignore') {
-                if (value.includes('[') && value.includes(']')) {
-                  hqConfig[key] = value
-                    .replace(/[\[\]'"`]/g, '')
-                    .split(',')
-                    .map(s => s.trim())
-                } else {
-                  hqConfig[key] = value
-                    .replace(/[\"']/g, '')
-                    .split(',')
-                    .map(s => s.trim())
-                }
-              } else {
+              // Only parse asset_id, asset_name, branch
+              if (['asset_id', 'asset_name', 'branch'].includes(key)) {
                 hqConfig[key] = value.replace(/[\"']/g, '').trim()
               }
             }
@@ -262,19 +242,8 @@ export async function run(): Promise<void> {
             if (match) {
               const [, key, value] = match
               core.info(`  Found key: ${key}, value: ${value}`)
-              if (key === 'escrow_ignore') {
-                if (value.includes('[') && value.includes(']')) {
-                  lqConfig[key] = value
-                    .replace(/[\[\]'"`]/g, '')
-                    .split(',')
-                    .map(s => s.trim())
-                } else {
-                  lqConfig[key] = value
-                    .replace(/[\"']/g, '')
-                    .split(',')
-                    .map(s => s.trim())
-                }
-              } else {
+              // Only parse asset_id, asset_name, branch
+              if (['asset_id', 'asset_name', 'branch'].includes(key)) {
                 lqConfig[key] = value.replace(/[\"']/g, '').trim()
               }
             }
@@ -376,11 +345,9 @@ export async function run(): Promise<void> {
         if (shouldCreateHQ && hqConfig) {
           core.info('📦 Creating HQ version...')
           const hqBranch = hqConfig.branch || 'main'
-          const hqIgnoreFiles = hqConfig.escrow_ignore || []
           hqZipPath = await createHQVersion(
             hqConfig.asset_name || `${baseAssetName}-hq`,
-            hqBranch,
-            hqIgnoreFiles
+            hqBranch
           )
 
           if (hqConfig.asset_id) {
@@ -399,11 +366,9 @@ export async function run(): Promise<void> {
         if (shouldCreateLQ && lqConfig) {
           core.info('📦 Creating LQ version...')
           const lqBranch = lqConfig.branch || 'low-quality'
-          const lqIgnoreFiles = lqConfig.escrow_ignore || []
           lqZipPath = await createLQVersion(
             lqConfig.asset_name || `${baseAssetName}-lq`,
-            lqBranch,
-            lqIgnoreFiles
+            lqBranch
           )
 
           if (lqConfig.asset_id) {

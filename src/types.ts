@@ -27,8 +27,14 @@ export enum Urls {
 export interface AssetConfig {
   asset_id?: string
   asset_name?: string
-  escrow_ignore?: string[]
   branch?: string
+}
+
+export type VersionType = 'escrowed' | 'opensource'
+
+export interface VersionConfig {
+  type: VersionType
+  assetName: string
 }
 
 export interface BuildOptions {

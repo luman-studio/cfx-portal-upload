@@ -1,5 +1,11 @@
 import { Browser, getInstalledBrowsers, install } from '@puppeteer/browsers'
-import { SearchResponse, Urls, BuildOptions, ZipPaths } from './types'
+import {
+  SearchResponse,
+  Urls,
+  BuildOptions,
+  ZipPaths,
+  VersionConfig
+} from './types'
 import { homedir } from 'os'
 import { join } from 'path'
 
@@ -8,6 +14,267 @@ import axios from 'axios'
 import fs from 'fs'
 import path from 'path'
 import yazl from 'yazl'
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/** Directories to exclude when copying workspace */
+const EXCLUDE_DIRS = [
+  '.git',
+  '.github',
+  '.vscode',
+  'node_modules',
+  'escrowed',
+  'open-source'
+]
+
+/** File extensions that are considered archives and should be excluded */
+const ARCHIVE_EXTENSIONS = [
+  '.zip',
+  '.rar',
+  '.7z',
+  '.tar',
+  '.gz',
+  '.tgz',
+  '.bz2',
+  '.xz'
+]
+
+
+// ============================================================================
+// LOW-LEVEL UTILITIES
+// ============================================================================
+
+/**
+ * Check if a file is an archive based on its extension
+ * @param filename The filename to check
+ * @returns true if the file is an archive
+ */
+function isArchive(filename: string): boolean {
+  const ext = path.extname(filename).toLowerCase()
+  return ARCHIVE_EXTENSIONS.includes(ext)
+}
+
+/**
+ * Creates directory recursively if it doesn't exist
+ * @param dirPath Path to directory
+ */
+function ensureDirectory(dirPath: string): void {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true })
+  }
+}
+
+/**
+ * Copies files and directories recursively with filtering
+ * @param src Source path
+ * @param dest Destination path
+ * @param excludeDirs Directories to exclude
+ * @param excludeArchives Whether to exclude archive files
+ */
+function copyRecursivelyFiltered(
+  src: string,
+  dest: string,
+  excludeDirs: string[] = [],
+  excludeArchives: boolean = true
+): void {
+  const stats = fs.statSync(src)
+
+  if (stats.isDirectory()) {
+    if (excludeDirs.includes(path.basename(src))) {
+      return
+    }
+
+    ensureDirectory(dest)
+
+    const entries = fs.readdirSync(src)
+    for (const entry of entries) {
+      if (excludeDirs.includes(entry)) {
+        continue
+      }
+      if (excludeArchives && isArchive(entry)) {
+        core.debug(`Skipping archive file: ${entry}`)
+        continue
+      }
+      copyRecursivelyFiltered(
+        path.join(src, entry),
+        path.join(dest, entry),
+        excludeDirs,
+        excludeArchives
+      )
+    }
+  } else if (stats.isFile()) {
+    if (excludeArchives && isArchive(path.basename(src))) {
+      core.debug(`Skipping archive file: ${src}`)
+      return
+    }
+    fs.copyFileSync(src, dest)
+  }
+}
+
+/**
+ * Copies workspace to destination directory, excluding system dirs and archives
+ * @param destDir Destination directory path
+ */
+function copyWorkspaceToDir(destDir: string): void {
+  const workspacePath = getEnv('GITHUB_WORKSPACE')
+  ensureDirectory(destDir)
+
+  const entries = fs.readdirSync(workspacePath)
+  for (const entry of entries) {
+    if (EXCLUDE_DIRS.includes(entry)) {
+      continue
+    }
+    if (isArchive(entry)) {
+      core.debug(`Skipping archive file: ${entry}`)
+      continue
+    }
+
+    const srcPath = path.join(workspacePath, entry)
+    const destPath = path.join(destDir, entry)
+    const stats = fs.statSync(srcPath)
+
+    if (stats.isDirectory()) {
+      copyRecursivelyFiltered(srcPath, destPath, ['node_modules'], true)
+    } else if (stats.isFile()) {
+      fs.copyFileSync(srcPath, destPath)
+    }
+  }
+}
+
+// ============================================================================
+// FXMANIFEST UTILITIES
+// ============================================================================
+
+/**
+ * Replaces or appends escrow_ignore block in fxmanifest.lua
+ * @param fxmanifestPath Path to fxmanifest.lua
+ * @param files Array of files/patterns to ignore
+ * @param forceReplace If true, replaces existing escrow_ignore; if false, only adds if not present
+ */
+function setEscrowIgnore(
+  fxmanifestPath: string,
+  files: string[],
+  forceReplace: boolean = false
+): void {
+  if (!fs.existsSync(fxmanifestPath)) {
+    return
+  }
+
+  let content = fs.readFileSync(fxmanifestPath, 'utf8')
+  const ignoreEntries = files.map(file => `  '${file}',`).join('\n')
+  const escrowIgnoreBlock = `escrow_ignore {\n${ignoreEntries}\n}`
+
+  // Check if escrow_ignore already exists
+  const escrowIgnoreRegex = /^\s*escrow_ignore\s*\{[^}]*\}/m
+
+  if (escrowIgnoreRegex.test(content)) {
+    if (forceReplace) {
+      // Replace existing escrow_ignore
+      content = content.replace(escrowIgnoreRegex, escrowIgnoreBlock)
+      fs.writeFileSync(fxmanifestPath, content, 'utf8')
+      core.info('Replaced existing escrow_ignore in fxmanifest.lua')
+    } else {
+      // Keep existing escrow_ignore
+      core.info('Keeping existing escrow_ignore from fxmanifest.lua')
+    }
+  } else {
+    // Append new escrow_ignore
+    fs.appendFileSync(fxmanifestPath, `\n${escrowIgnoreBlock}\n`)
+    core.info('Added escrow_ignore to fxmanifest.lua')
+  }
+}
+
+/**
+ * Updates fxmanifest.lua version field ONLY if running from a git tag
+ * All other fields (name, description, author) are left unchanged - author controls them
+ * @param fxmanifestPath Path to fxmanifest.lua file
+ */
+function updateFxManifestVersion(fxmanifestPath: string): void {
+  if (!fs.existsSync(fxmanifestPath)) {
+    return
+  }
+
+  // Only update version if this is a tag (not a branch)
+  const refType = process.env.GITHUB_REF_TYPE
+  if (refType !== 'tag') {
+    core.info('No git tag found, keeping original version in fxmanifest.lua')
+    return
+  }
+
+  const tagName = process.env.GITHUB_REF_NAME
+  if (!tagName) {
+    core.info('No tag name found, keeping original version')
+    return
+  }
+
+  // Remove 'v' prefix if present (v1.2.3 -> 1.2.3)
+  const version = tagName.replace(/^v/, '')
+
+  let content = fs.readFileSync(fxmanifestPath, 'utf8')
+  const versionRegex = /^(\s*version\s+)(['"`])([^'"`]*)(['"`])/m
+
+  if (versionRegex.test(content)) {
+    content = content.replace(versionRegex, `$1'${version}'`)
+    fs.writeFileSync(fxmanifestPath, content, 'utf8')
+    core.info(`Updated fxmanifest.lua version to '${version}'`)
+  } else {
+    // Add version after fx_version if it doesn't exist
+    const fxVersionRegex = /^(\s*fx_version\s+[^\n]*\n)/m
+    if (fxVersionRegex.test(content)) {
+      content = content.replace(fxVersionRegex, `$1version '${version}'\n`)
+      fs.writeFileSync(fxmanifestPath, content, 'utf8')
+      core.info(`Added version '${version}' to fxmanifest.lua`)
+    }
+  }
+}
+
+// ============================================================================
+// VERSION CREATION
+// ============================================================================
+
+/**
+ * Creates a resource version (escrowed or opensource)
+ * @param config Version configuration
+ * @returns Path to the created ZIP file
+ */
+async function createResourceVersion(config: VersionConfig): Promise<string> {
+  const { type } = config
+  const workspacePath = getEnv('GITHUB_WORKSPACE')
+  const workspaceName = path.basename(workspacePath)
+
+  const dirName = type === 'escrowed' ? 'escrowed' : 'open-source'
+  const targetDir = path.join(workspacePath, dirName)
+  const zipSuffix = type === 'escrowed' ? 'escrowed' : 'opensource'
+
+  core.info(`Creating ${type} version...`)
+
+  // Build web/dui if exists
+  await buildWebAndDui()
+
+  // Copy workspace to target directory
+  copyWorkspaceToDir(targetDir)
+
+  // Update fxmanifest.lua version (only if git tag exists)
+  const fxmanifestPath = path.join(targetDir, 'fxmanifest.lua')
+  updateFxManifestVersion(fxmanifestPath)
+
+  // Handle escrow_ignore based on type
+  if (type === 'opensource') {
+    // For opensource: always set escrow_ignore to '**/*' (all files open)
+    setEscrowIgnore(fxmanifestPath, ['**/*'], true)
+  }
+  // For escrowed: don't touch escrow_ignore - author controls it in fxmanifest.lua
+
+  // Create ZIP
+  const zipPath = `${workspaceName}.${zipSuffix}.zip`
+  return await zipDirectory(targetDir, zipPath, workspaceName)
+}
+
+// ============================================================================
+// PUPPETEER SETUP
+// ============================================================================
 
 /**
  * Get the cache directory for Puppeteer.
@@ -293,7 +560,7 @@ async function buildWebAndDui(): Promise<void> {
                 if (!fs.existsSync(targetDuiBuildPath)) {
                   fs.mkdirSync(targetDuiBuildPath, { recursive: true })
                 }
-                copyRecursively(duiBuildPath, targetDuiBuildPath)
+                copyRecursivelyFiltered(duiBuildPath, targetDuiBuildPath, [], false)
               }
 
               core.info('✅ DUI build completed')
@@ -390,15 +657,13 @@ async function checkoutBranch(branchName: string): Promise<void> {
 
 /**
  * Creates HQ version of the asset
- * @param assetName The name of the asset
+ * @param _assetName The name of the asset (unused, kept for API compatibility)
  * @param branch The branch to checkout (defaults to 'main')
- * @param ignoreFiles Optional array of files to ignore in escrow
  * @returns Path to the HQ zip file
  */
 export async function createHQVersion(
-  assetName: string,
-  branch: string = 'main',
-  ignoreFiles?: string[]
+  _assetName: string,
+  branch: string = 'main'
 ): Promise<string> {
   core.info(`📦 Creating HQ version from branch: ${branch}`)
 
@@ -427,15 +692,13 @@ export async function createHQVersion(
 
 /**
  * Creates LQ version of the asset
- * @param assetName The name of the asset
+ * @param _assetName The name of the asset (unused, kept for API compatibility)
  * @param branch The branch to checkout (defaults to 'low-quality')
- * @param ignoreFiles Optional array of files to ignore in escrow
  * @returns Path to the LQ zip file
  */
 export async function createLQVersion(
-  assetName: string,
-  branch: string = 'low-quality',
-  ignoreFiles?: string[]
+  _assetName: string,
+  branch: string = 'low-quality'
 ): Promise<string> {
   core.info(`📦 Creating LQ version from branch: ${branch}`)
 
@@ -464,295 +727,42 @@ export async function createLQVersion(
 
 /**
  * Creates escrowed version of the asset
- * @param assetName The name of the asset
- * @param ignoreFiles Optional array of files to ignore in escrow
- * @returns Path to the escrowed zip file
+ * Uses the unified createResourceVersion function
  */
 export async function createEscrowedVersion(
-  assetName: string,
-  ignoreFiles?: string[]
+  _assetName: string
 ): Promise<string> {
-  core.info('Creating escrowed version...')
-
-  await buildWebAndDui()
-
-  const workspacePath = getEnv('GITHUB_WORKSPACE')
-  const escrowedDir = path.join(workspacePath, 'escrowed')
-
-  await createDirectory(escrowedDir)
-
-  // Exclude directories that should not be included in the escrowed version
-  const excludeDirs = [
-    '.git',
-    '.github',
-    '.vscode',
-    'node_modules',
-    'escrowed',
-    'open-source'
-  ]
-
-  // Copy all files and folders from workspace to escrowed directory
-  const entries = fs.readdirSync(workspacePath)
-  for (const entry of entries) {
-    if (excludeDirs.includes(entry)) {
-      continue
-    }
-    // Skip archive files
-    if (isArchive(entry)) {
-      core.debug(`Skipping archive file: ${entry}`)
-      continue
-    }
-    const srcPath = path.join(workspacePath, entry)
-    const destPath = path.join(escrowedDir, entry)
-    const stats = fs.statSync(srcPath)
-
-    if (stats.isDirectory()) {
-      copyRecursively(srcPath, destPath, ['node_modules'], true)
-    } else if (stats.isFile()) {
-      fs.copyFileSync(srcPath, destPath)
-    }
-  }
-
-  const fxmanifestPath = path.join(escrowedDir, 'fxmanifest.lua')
-  updateFxManifestMetadata(
-    fxmanifestPath,
-    path.basename(getEnv('GITHUB_WORKSPACE'))
-  )
-
-  if (fs.existsSync(fxmanifestPath)) {
-    const filesToIgnore = ignoreFiles || [
-      'init.lua',
-      'shared/config.lua',
-      'shared/utils.lua',
-      'shared/startheist.lua'
-    ]
-    const ignoreEntries = filesToIgnore
-      .map((file: string) => `  '${file}',`)
-      .join('\n')
-    const escrowIgnore = `\nescrow_ignore {\n${ignoreEntries}\n}\n`
-    fs.appendFileSync(fxmanifestPath, escrowIgnore)
-  }
-
-  const workspaceName = path.basename(getEnv('GITHUB_WORKSPACE'))
-  const zipPath = `${workspaceName}.escrowed.zip`
-  return await zipDirectory(escrowedDir, zipPath, workspaceName)
+  return createResourceVersion({
+    type: 'escrowed',
+    assetName: _assetName
+  })
 }
 
 /**
  * Creates open source version of the asset
- * @param assetName The name of the asset
- * @returns Path to the open source zip file
+ * Uses the unified createResourceVersion function
  */
 export async function createOpenSourceVersion(
-  assetName: string
+  _assetName: string
 ): Promise<string> {
-  core.info('Creating open-source version...')
-
-  await buildWebAndDui()
-
-  const workspacePath = getEnv('GITHUB_WORKSPACE')
-  const openSourceDir = path.join(workspacePath, 'open-source')
-
-  await createDirectory(openSourceDir)
-
-  // Exclude directories that should not be included in the open-source version
-  const excludeDirs = [
-    '.git',
-    '.github',
-    '.vscode',
-    'node_modules',
-    'escrowed',
-    'open-source'
-  ]
-
-  // Copy all files and folders from workspace to open-source directory
-  const entries = fs.readdirSync(workspacePath)
-  for (const entry of entries) {
-    if (excludeDirs.includes(entry)) {
-      continue
-    }
-    // Skip archive files
-    if (isArchive(entry)) {
-      core.debug(`Skipping archive file: ${entry}`)
-      continue
-    }
-    const srcPath = path.join(workspacePath, entry)
-    const destPath = path.join(openSourceDir, entry)
-    const stats = fs.statSync(srcPath)
-
-    if (stats.isDirectory()) {
-      copyRecursively(srcPath, destPath, ['node_modules'], true)
-    } else if (stats.isFile()) {
-      fs.copyFileSync(srcPath, destPath)
-    }
-  }
-
-  const fxmanifestPath = path.join(openSourceDir, 'fxmanifest.lua')
-  updateFxManifestMetadata(
-    fxmanifestPath,
-    path.basename(getEnv('GITHUB_WORKSPACE'))
-  )
-
-  // For open-source, we want to ignore escrow for all files
-  if (fs.existsSync(fxmanifestPath)) {
-    const escrowIgnore = `
-escrow_ignore {
-  '**/*',
-}
-`
-    fs.appendFileSync(fxmanifestPath, escrowIgnore)
-  }
-
-  const workspaceName = path.basename(getEnv('GITHUB_WORKSPACE'))
-  const zipPath = `${workspaceName}.opensource.zip`
-  return await zipDirectory(openSourceDir, zipPath, workspaceName)
-}
-
-/**
- * Updates fxmanifest.lua with repository metadata
- * @param fxmanifestPath Path to fxmanifest.lua file
- * @param resourceName Name of the resource (from workspace folder)
- */
-function updateFxManifestMetadata(
-  fxmanifestPath: string,
-  resourceName: string
-): void {
-  if (!fs.existsSync(fxmanifestPath)) {
-    return
-  }
-
-  let content = fs.readFileSync(fxmanifestPath, 'utf8')
-
-  const tagName = process.env.GITHUB_REF_NAME || '1.0.0'
-  const displayName = resourceName.toUpperCase().replace(/-/g, ' ')
-
-  const descriptionMatch = content.match(
-    /^\s*description\s+(['"`])([^'"`]*)\1/m
-  )
-  const existingDescription = descriptionMatch
-    ? descriptionMatch[2]
-    : `${resourceName} - FiveM Resource`
-
-  const updates = [
-    { field: 'name', value: `'${displayName}'` },
-    { field: 'author', value: `'Koja Scripts'` },
-    { field: 'version', value: `'${tagName}'` },
-    { field: 'description', value: `'${existingDescription}'` }
-  ]
-
-  for (const { field, value } of updates) {
-    const regex = new RegExp(`^\\s*${field}\\s+[^\\n]*`, 'm')
-    const replacement = `${field} ${value}`
-
-    if (regex.test(content)) {
-      content = content.replace(regex, replacement)
-    } else {
-      const fxVersionRegex = /^(\s*fx_version\s+[^\n]*\n)/m
-      if (fxVersionRegex.test(content)) {
-        content = content.replace(fxVersionRegex, `$1${replacement}\n`)
-      } else {
-        content = `${replacement}\n${content}`
-      }
-    }
-  }
-
-  fs.writeFileSync(fxmanifestPath, content, 'utf8')
-}
-
-/**
- * Creates directory recursively
- * @param dirPath Path to directory
- */
-async function createDirectory(dirPath: string): Promise<void> {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true })
-  }
-}
-
-// File extensions that are considered archives and should be excluded
-const ARCHIVE_EXTENSIONS = [
-  '.zip',
-  '.rar',
-  '.7z',
-  '.tar',
-  '.gz',
-  '.tgz',
-  '.bz2',
-  '.xz'
-]
-
-/**
- * Check if a file is an archive based on its extension
- * @param filename The filename to check
- * @returns true if the file is an archive
- */
-function isArchive(filename: string): boolean {
-  const ext = path.extname(filename).toLowerCase()
-  return ARCHIVE_EXTENSIONS.includes(ext)
-}
-
-/**
- * Copies files and directories recursively
- * @param src Source path
- * @param dest Destination path
- * @param excludeDirs Directories to exclude
- * @param excludeArchives Whether to exclude archive files (default: true)
- */
-function copyRecursively(
-  src: string,
-  dest: string,
-  excludeDirs: string[] = [],
-  excludeArchives: boolean = true
-): void {
-  const stats = fs.statSync(src)
-
-  if (stats.isDirectory()) {
-    if (excludeDirs.includes(path.basename(src))) {
-      return
-    }
-
-    if (!fs.existsSync(dest)) {
-      fs.mkdirSync(dest, { recursive: true })
-    }
-
-    const entries = fs.readdirSync(src)
-    for (const entry of entries) {
-      if (excludeDirs.includes(entry)) {
-        continue
-      }
-      // Skip archive files if excludeArchives is true
-      if (excludeArchives && isArchive(entry)) {
-        core.debug(`Skipping archive file: ${entry}`)
-        continue
-      }
-      copyRecursively(
-        path.join(src, entry),
-        path.join(dest, entry),
-        excludeDirs,
-        excludeArchives
-      )
-    }
-  } else if (stats.isFile()) {
-    // Skip archive files if excludeArchives is true
-    if (excludeArchives && isArchive(path.basename(src))) {
-      core.debug(`Skipping archive file: ${src}`)
-      return
-    }
-    fs.copyFileSync(src, dest)
-  }
+  return createResourceVersion({
+    type: 'opensource',
+    assetName: _assetName
+  })
 }
 
 /**
  * Creates a zip file from a directory
  * @param sourceDir Source directory to zip
  * @param zipPath Output zip file path
- * @param rootFolderName Name of the root folder in the zip
+ * @param _rootFolderName Name of the root folder in the zip (unused, kept for API compatibility)
+ * @param excludePaths Paths to exclude from the zip
  * @returns Promise resolving to the absolute path of the created zip file
  */
 async function zipDirectory(
   sourceDir: string,
   zipPath: string,
-  rootFolderName: string,
+  _rootFolderName: string,
   excludePaths: string[] = []
 ): Promise<string> {
   const zipfile = new yazl.ZipFile()
@@ -820,14 +830,9 @@ export async function createVersions(
   deleteIfExists('open-source/')
 
   if (options.createEscrowed) {
-    const escrowIgnoreFiles = options.escrowedConfig?.escrow_ignore
     const escrowedName =
       options.escrowedConfig?.asset_name || `${assetName}-escrowed`
-
-    zipPaths.escrowed = await createEscrowedVersion(
-      escrowedName,
-      escrowIgnoreFiles
-    )
+    zipPaths.escrowed = await createEscrowedVersion(escrowedName)
   }
 
   if (options.createOpenSource) {

@@ -296243,22 +296243,8 @@ async function run() {
                         if (match) {
                             const [, key, value] = match;
                             core.info(`  Found key: ${key}, value: ${value}`);
-                            if (key === 'escrow_ignore') {
-                                // Handle array syntax: ['item1', 'item2'] or "item1,item2"
-                                if (value.includes('[') && value.includes(']')) {
-                                    escrowedConfig[key] = value
-                                        .replace(/[\[\]'"`]/g, '')
-                                        .split(',')
-                                        .map(s => s.trim());
-                                }
-                                else {
-                                    escrowedConfig[key] = value
-                                        .replace(/[\"']/g, '')
-                                        .split(',')
-                                        .map(s => s.trim());
-                                }
-                            }
-                            else {
+                            // Only parse asset_id, asset_name, branch
+                            if (['asset_id', 'asset_name', 'branch'].includes(key)) {
                                 escrowedConfig[key] = value.replace(/[\"']/g, '').trim();
                             }
                         }
@@ -296281,7 +296267,10 @@ async function run() {
                         if (match) {
                             const [, key, value] = match;
                             core.info(`  Found key: ${key}, value: ${value}`);
-                            openSourceConfig[key] = value.replace(/[\"']/g, '').trim();
+                            // Only parse asset_id, asset_name, branch
+                            if (['asset_id', 'asset_name', 'branch'].includes(key)) {
+                                openSourceConfig[key] = value.replace(/[\"']/g, '').trim();
+                            }
                         }
                     }
                     core.info(`✅ Parsed openSource config: ${JSON.stringify(openSourceConfig)}`);
@@ -296307,21 +296296,8 @@ async function run() {
                         if (match) {
                             const [, key, value] = match;
                             core.info(`  Found key: ${key}, value: ${value}`);
-                            if (key === 'escrow_ignore') {
-                                if (value.includes('[') && value.includes(']')) {
-                                    hqConfig[key] = value
-                                        .replace(/[\[\]'"`]/g, '')
-                                        .split(',')
-                                        .map(s => s.trim());
-                                }
-                                else {
-                                    hqConfig[key] = value
-                                        .replace(/[\"']/g, '')
-                                        .split(',')
-                                        .map(s => s.trim());
-                                }
-                            }
-                            else {
+                            // Only parse asset_id, asset_name, branch
+                            if (['asset_id', 'asset_name', 'branch'].includes(key)) {
                                 hqConfig[key] = value.replace(/[\"']/g, '').trim();
                             }
                         }
@@ -296344,21 +296320,8 @@ async function run() {
                         if (match) {
                             const [, key, value] = match;
                             core.info(`  Found key: ${key}, value: ${value}`);
-                            if (key === 'escrow_ignore') {
-                                if (value.includes('[') && value.includes(']')) {
-                                    lqConfig[key] = value
-                                        .replace(/[\[\]'"`]/g, '')
-                                        .split(',')
-                                        .map(s => s.trim());
-                                }
-                                else {
-                                    lqConfig[key] = value
-                                        .replace(/[\"']/g, '')
-                                        .split(',')
-                                        .map(s => s.trim());
-                                }
-                            }
-                            else {
+                            // Only parse asset_id, asset_name, branch
+                            if (['asset_id', 'asset_name', 'branch'].includes(key)) {
                                 lqConfig[key] = value.replace(/[\"']/g, '').trim();
                             }
                         }
@@ -296440,8 +296403,7 @@ async function run() {
                 if (shouldCreateHQ && hqConfig) {
                     core.info('📦 Creating HQ version...');
                     const hqBranch = hqConfig.branch || 'main';
-                    const hqIgnoreFiles = hqConfig.escrow_ignore || [];
-                    hqZipPath = await (0, utils_1.createHQVersion)(hqConfig.asset_name || `${baseAssetName}-hq`, hqBranch, hqIgnoreFiles);
+                    hqZipPath = await (0, utils_1.createHQVersion)(hqConfig.asset_name || `${baseAssetName}-hq`, hqBranch);
                     if (hqConfig.asset_id) {
                         hqId = hqConfig.asset_id;
                         core.info(`Using HQ asset_id: ${hqId}`);
@@ -296459,8 +296421,7 @@ async function run() {
                 if (shouldCreateLQ && lqConfig) {
                     core.info('📦 Creating LQ version...');
                     const lqBranch = lqConfig.branch || 'low-quality';
-                    const lqIgnoreFiles = lqConfig.escrow_ignore || [];
-                    lqZipPath = await (0, utils_1.createLQVersion)(lqConfig.asset_name || `${baseAssetName}-lq`, lqBranch, lqIgnoreFiles);
+                    lqZipPath = await (0, utils_1.createLQVersion)(lqConfig.asset_name || `${baseAssetName}-lq`, lqBranch);
                     if (lqConfig.asset_id) {
                         lqId = lqConfig.asset_id;
                         core.info(`Using LQ asset_id: ${lqId}`);
@@ -296781,6 +296742,222 @@ const axios_1 = __importDefault(__nccwpck_require__(87269));
 const fs_1 = __importDefault(__nccwpck_require__(79896));
 const path_2 = __importDefault(__nccwpck_require__(16928));
 const yazl_1 = __importDefault(__nccwpck_require__(93044));
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+/** Directories to exclude when copying workspace */
+const EXCLUDE_DIRS = [
+    '.git',
+    '.github',
+    '.vscode',
+    'node_modules',
+    'escrowed',
+    'open-source'
+];
+/** File extensions that are considered archives and should be excluded */
+const ARCHIVE_EXTENSIONS = [
+    '.zip',
+    '.rar',
+    '.7z',
+    '.tar',
+    '.gz',
+    '.tgz',
+    '.bz2',
+    '.xz'
+];
+// ============================================================================
+// LOW-LEVEL UTILITIES
+// ============================================================================
+/**
+ * Check if a file is an archive based on its extension
+ * @param filename The filename to check
+ * @returns true if the file is an archive
+ */
+function isArchive(filename) {
+    const ext = path_2.default.extname(filename).toLowerCase();
+    return ARCHIVE_EXTENSIONS.includes(ext);
+}
+/**
+ * Creates directory recursively if it doesn't exist
+ * @param dirPath Path to directory
+ */
+function ensureDirectory(dirPath) {
+    if (!fs_1.default.existsSync(dirPath)) {
+        fs_1.default.mkdirSync(dirPath, { recursive: true });
+    }
+}
+/**
+ * Copies files and directories recursively with filtering
+ * @param src Source path
+ * @param dest Destination path
+ * @param excludeDirs Directories to exclude
+ * @param excludeArchives Whether to exclude archive files
+ */
+function copyRecursivelyFiltered(src, dest, excludeDirs = [], excludeArchives = true) {
+    const stats = fs_1.default.statSync(src);
+    if (stats.isDirectory()) {
+        if (excludeDirs.includes(path_2.default.basename(src))) {
+            return;
+        }
+        ensureDirectory(dest);
+        const entries = fs_1.default.readdirSync(src);
+        for (const entry of entries) {
+            if (excludeDirs.includes(entry)) {
+                continue;
+            }
+            if (excludeArchives && isArchive(entry)) {
+                core.debug(`Skipping archive file: ${entry}`);
+                continue;
+            }
+            copyRecursivelyFiltered(path_2.default.join(src, entry), path_2.default.join(dest, entry), excludeDirs, excludeArchives);
+        }
+    }
+    else if (stats.isFile()) {
+        if (excludeArchives && isArchive(path_2.default.basename(src))) {
+            core.debug(`Skipping archive file: ${src}`);
+            return;
+        }
+        fs_1.default.copyFileSync(src, dest);
+    }
+}
+/**
+ * Copies workspace to destination directory, excluding system dirs and archives
+ * @param destDir Destination directory path
+ */
+function copyWorkspaceToDir(destDir) {
+    const workspacePath = getEnv('GITHUB_WORKSPACE');
+    ensureDirectory(destDir);
+    const entries = fs_1.default.readdirSync(workspacePath);
+    for (const entry of entries) {
+        if (EXCLUDE_DIRS.includes(entry)) {
+            continue;
+        }
+        if (isArchive(entry)) {
+            core.debug(`Skipping archive file: ${entry}`);
+            continue;
+        }
+        const srcPath = path_2.default.join(workspacePath, entry);
+        const destPath = path_2.default.join(destDir, entry);
+        const stats = fs_1.default.statSync(srcPath);
+        if (stats.isDirectory()) {
+            copyRecursivelyFiltered(srcPath, destPath, ['node_modules'], true);
+        }
+        else if (stats.isFile()) {
+            fs_1.default.copyFileSync(srcPath, destPath);
+        }
+    }
+}
+// ============================================================================
+// FXMANIFEST UTILITIES
+// ============================================================================
+/**
+ * Replaces or appends escrow_ignore block in fxmanifest.lua
+ * @param fxmanifestPath Path to fxmanifest.lua
+ * @param files Array of files/patterns to ignore
+ * @param forceReplace If true, replaces existing escrow_ignore; if false, only adds if not present
+ */
+function setEscrowIgnore(fxmanifestPath, files, forceReplace = false) {
+    if (!fs_1.default.existsSync(fxmanifestPath)) {
+        return;
+    }
+    let content = fs_1.default.readFileSync(fxmanifestPath, 'utf8');
+    const ignoreEntries = files.map(file => `  '${file}',`).join('\n');
+    const escrowIgnoreBlock = `escrow_ignore {\n${ignoreEntries}\n}`;
+    // Check if escrow_ignore already exists
+    const escrowIgnoreRegex = /^\s*escrow_ignore\s*\{[^}]*\}/m;
+    if (escrowIgnoreRegex.test(content)) {
+        if (forceReplace) {
+            // Replace existing escrow_ignore
+            content = content.replace(escrowIgnoreRegex, escrowIgnoreBlock);
+            fs_1.default.writeFileSync(fxmanifestPath, content, 'utf8');
+            core.info('Replaced existing escrow_ignore in fxmanifest.lua');
+        }
+        else {
+            // Keep existing escrow_ignore
+            core.info('Keeping existing escrow_ignore from fxmanifest.lua');
+        }
+    }
+    else {
+        // Append new escrow_ignore
+        fs_1.default.appendFileSync(fxmanifestPath, `\n${escrowIgnoreBlock}\n`);
+        core.info('Added escrow_ignore to fxmanifest.lua');
+    }
+}
+/**
+ * Updates fxmanifest.lua version field ONLY if running from a git tag
+ * All other fields (name, description, author) are left unchanged - author controls them
+ * @param fxmanifestPath Path to fxmanifest.lua file
+ */
+function updateFxManifestVersion(fxmanifestPath) {
+    if (!fs_1.default.existsSync(fxmanifestPath)) {
+        return;
+    }
+    // Only update version if this is a tag (not a branch)
+    const refType = process.env.GITHUB_REF_TYPE;
+    if (refType !== 'tag') {
+        core.info('No git tag found, keeping original version in fxmanifest.lua');
+        return;
+    }
+    const tagName = process.env.GITHUB_REF_NAME;
+    if (!tagName) {
+        core.info('No tag name found, keeping original version');
+        return;
+    }
+    // Remove 'v' prefix if present (v1.2.3 -> 1.2.3)
+    const version = tagName.replace(/^v/, '');
+    let content = fs_1.default.readFileSync(fxmanifestPath, 'utf8');
+    const versionRegex = /^(\s*version\s+)(['"`])([^'"`]*)(['"`])/m;
+    if (versionRegex.test(content)) {
+        content = content.replace(versionRegex, `$1'${version}'`);
+        fs_1.default.writeFileSync(fxmanifestPath, content, 'utf8');
+        core.info(`Updated fxmanifest.lua version to '${version}'`);
+    }
+    else {
+        // Add version after fx_version if it doesn't exist
+        const fxVersionRegex = /^(\s*fx_version\s+[^\n]*\n)/m;
+        if (fxVersionRegex.test(content)) {
+            content = content.replace(fxVersionRegex, `$1version '${version}'\n`);
+            fs_1.default.writeFileSync(fxmanifestPath, content, 'utf8');
+            core.info(`Added version '${version}' to fxmanifest.lua`);
+        }
+    }
+}
+// ============================================================================
+// VERSION CREATION
+// ============================================================================
+/**
+ * Creates a resource version (escrowed or opensource)
+ * @param config Version configuration
+ * @returns Path to the created ZIP file
+ */
+async function createResourceVersion(config) {
+    const { type } = config;
+    const workspacePath = getEnv('GITHUB_WORKSPACE');
+    const workspaceName = path_2.default.basename(workspacePath);
+    const dirName = type === 'escrowed' ? 'escrowed' : 'open-source';
+    const targetDir = path_2.default.join(workspacePath, dirName);
+    const zipSuffix = type === 'escrowed' ? 'escrowed' : 'opensource';
+    core.info(`Creating ${type} version...`);
+    // Build web/dui if exists
+    await buildWebAndDui();
+    // Copy workspace to target directory
+    copyWorkspaceToDir(targetDir);
+    // Update fxmanifest.lua version (only if git tag exists)
+    const fxmanifestPath = path_2.default.join(targetDir, 'fxmanifest.lua');
+    updateFxManifestVersion(fxmanifestPath);
+    // Handle escrow_ignore based on type
+    if (type === 'opensource') {
+        // For opensource: always set escrow_ignore to '**/*' (all files open)
+        setEscrowIgnore(fxmanifestPath, ['**/*'], true);
+    }
+    // For escrowed: don't touch escrow_ignore - author controls it in fxmanifest.lua
+    // Create ZIP
+    const zipPath = `${workspaceName}.${zipSuffix}.zip`;
+    return await zipDirectory(targetDir, zipPath, workspaceName);
+}
+// ============================================================================
+// PUPPETEER SETUP
+// ============================================================================
 /**
  * Get the cache directory for Puppeteer.
  * @returns {string} The cache directory.
@@ -297007,7 +297184,7 @@ async function buildWebAndDui() {
                                 if (!fs_1.default.existsSync(targetDuiBuildPath)) {
                                     fs_1.default.mkdirSync(targetDuiBuildPath, { recursive: true });
                                 }
-                                copyRecursively(duiBuildPath, targetDuiBuildPath);
+                                copyRecursivelyFiltered(duiBuildPath, targetDuiBuildPath, [], false);
                             }
                             core.info('✅ DUI build completed');
                             resolve();
@@ -297099,12 +297276,11 @@ async function checkoutBranch(branchName) {
 }
 /**
  * Creates HQ version of the asset
- * @param assetName The name of the asset
+ * @param _assetName The name of the asset (unused, kept for API compatibility)
  * @param branch The branch to checkout (defaults to 'main')
- * @param ignoreFiles Optional array of files to ignore in escrow
  * @returns Path to the HQ zip file
  */
-async function createHQVersion(assetName, branch = 'main', ignoreFiles) {
+async function createHQVersion(_assetName, branch = 'main') {
     core.info(`📦 Creating HQ version from branch: ${branch}`);
     // Checkout the HQ branch
     await checkoutBranch(branch);
@@ -297127,12 +297303,11 @@ async function createHQVersion(assetName, branch = 'main', ignoreFiles) {
 }
 /**
  * Creates LQ version of the asset
- * @param assetName The name of the asset
+ * @param _assetName The name of the asset (unused, kept for API compatibility)
  * @param branch The branch to checkout (defaults to 'low-quality')
- * @param ignoreFiles Optional array of files to ignore in escrow
  * @returns Path to the LQ zip file
  */
-async function createLQVersion(assetName, branch = 'low-quality', ignoreFiles) {
+async function createLQVersion(_assetName, branch = 'low-quality') {
     core.info(`📦 Creating LQ version from branch: ${branch}`);
     // Checkout the LQ branch
     await checkoutBranch(branch);
@@ -297155,236 +297330,33 @@ async function createLQVersion(assetName, branch = 'low-quality', ignoreFiles) {
 }
 /**
  * Creates escrowed version of the asset
- * @param assetName The name of the asset
- * @param ignoreFiles Optional array of files to ignore in escrow
- * @returns Path to the escrowed zip file
+ * Uses the unified createResourceVersion function
  */
-async function createEscrowedVersion(assetName, ignoreFiles) {
-    core.info('Creating escrowed version...');
-    await buildWebAndDui();
-    const workspacePath = getEnv('GITHUB_WORKSPACE');
-    const escrowedDir = path_2.default.join(workspacePath, 'escrowed');
-    await createDirectory(escrowedDir);
-    // Exclude directories that should not be included in the escrowed version
-    const excludeDirs = [
-        '.git',
-        '.github',
-        '.vscode',
-        'node_modules',
-        'escrowed',
-        'open-source'
-    ];
-    // Copy all files and folders from workspace to escrowed directory
-    const entries = fs_1.default.readdirSync(workspacePath);
-    for (const entry of entries) {
-        if (excludeDirs.includes(entry)) {
-            continue;
-        }
-        // Skip archive files
-        if (isArchive(entry)) {
-            core.debug(`Skipping archive file: ${entry}`);
-            continue;
-        }
-        const srcPath = path_2.default.join(workspacePath, entry);
-        const destPath = path_2.default.join(escrowedDir, entry);
-        const stats = fs_1.default.statSync(srcPath);
-        if (stats.isDirectory()) {
-            copyRecursively(srcPath, destPath, ['node_modules'], true);
-        }
-        else if (stats.isFile()) {
-            fs_1.default.copyFileSync(srcPath, destPath);
-        }
-    }
-    const fxmanifestPath = path_2.default.join(escrowedDir, 'fxmanifest.lua');
-    updateFxManifestMetadata(fxmanifestPath, path_2.default.basename(getEnv('GITHUB_WORKSPACE')));
-    if (fs_1.default.existsSync(fxmanifestPath)) {
-        const filesToIgnore = ignoreFiles || [
-            'init.lua',
-            'shared/config.lua',
-            'shared/utils.lua',
-            'shared/startheist.lua'
-        ];
-        const ignoreEntries = filesToIgnore
-            .map((file) => `  '${file}',`)
-            .join('\n');
-        const escrowIgnore = `\nescrow_ignore {\n${ignoreEntries}\n}\n`;
-        fs_1.default.appendFileSync(fxmanifestPath, escrowIgnore);
-    }
-    const workspaceName = path_2.default.basename(getEnv('GITHUB_WORKSPACE'));
-    const zipPath = `${workspaceName}.escrowed.zip`;
-    return await zipDirectory(escrowedDir, zipPath, workspaceName);
+async function createEscrowedVersion(_assetName) {
+    return createResourceVersion({
+        type: 'escrowed',
+        assetName: _assetName
+    });
 }
 /**
  * Creates open source version of the asset
- * @param assetName The name of the asset
- * @returns Path to the open source zip file
+ * Uses the unified createResourceVersion function
  */
-async function createOpenSourceVersion(assetName) {
-    core.info('Creating open-source version...');
-    await buildWebAndDui();
-    const workspacePath = getEnv('GITHUB_WORKSPACE');
-    const openSourceDir = path_2.default.join(workspacePath, 'open-source');
-    await createDirectory(openSourceDir);
-    // Exclude directories that should not be included in the open-source version
-    const excludeDirs = [
-        '.git',
-        '.github',
-        '.vscode',
-        'node_modules',
-        'escrowed',
-        'open-source'
-    ];
-    // Copy all files and folders from workspace to open-source directory
-    const entries = fs_1.default.readdirSync(workspacePath);
-    for (const entry of entries) {
-        if (excludeDirs.includes(entry)) {
-            continue;
-        }
-        // Skip archive files
-        if (isArchive(entry)) {
-            core.debug(`Skipping archive file: ${entry}`);
-            continue;
-        }
-        const srcPath = path_2.default.join(workspacePath, entry);
-        const destPath = path_2.default.join(openSourceDir, entry);
-        const stats = fs_1.default.statSync(srcPath);
-        if (stats.isDirectory()) {
-            copyRecursively(srcPath, destPath, ['node_modules'], true);
-        }
-        else if (stats.isFile()) {
-            fs_1.default.copyFileSync(srcPath, destPath);
-        }
-    }
-    const fxmanifestPath = path_2.default.join(openSourceDir, 'fxmanifest.lua');
-    updateFxManifestMetadata(fxmanifestPath, path_2.default.basename(getEnv('GITHUB_WORKSPACE')));
-    // For open-source, we want to ignore escrow for all files
-    if (fs_1.default.existsSync(fxmanifestPath)) {
-        const escrowIgnore = `
-escrow_ignore {
-  '**/*',
-}
-`;
-        fs_1.default.appendFileSync(fxmanifestPath, escrowIgnore);
-    }
-    const workspaceName = path_2.default.basename(getEnv('GITHUB_WORKSPACE'));
-    const zipPath = `${workspaceName}.opensource.zip`;
-    return await zipDirectory(openSourceDir, zipPath, workspaceName);
-}
-/**
- * Updates fxmanifest.lua with repository metadata
- * @param fxmanifestPath Path to fxmanifest.lua file
- * @param resourceName Name of the resource (from workspace folder)
- */
-function updateFxManifestMetadata(fxmanifestPath, resourceName) {
-    if (!fs_1.default.existsSync(fxmanifestPath)) {
-        return;
-    }
-    let content = fs_1.default.readFileSync(fxmanifestPath, 'utf8');
-    const tagName = process.env.GITHUB_REF_NAME || '1.0.0';
-    const displayName = resourceName.toUpperCase().replace(/-/g, ' ');
-    const descriptionMatch = content.match(/^\s*description\s+(['"`])([^'"`]*)\1/m);
-    const existingDescription = descriptionMatch
-        ? descriptionMatch[2]
-        : `${resourceName} - FiveM Resource`;
-    const updates = [
-        { field: 'name', value: `'${displayName}'` },
-        { field: 'author', value: `'Koja Scripts'` },
-        { field: 'version', value: `'${tagName}'` },
-        { field: 'description', value: `'${existingDescription}'` }
-    ];
-    for (const { field, value } of updates) {
-        const regex = new RegExp(`^\\s*${field}\\s+[^\\n]*`, 'm');
-        const replacement = `${field} ${value}`;
-        if (regex.test(content)) {
-            content = content.replace(regex, replacement);
-        }
-        else {
-            const fxVersionRegex = /^(\s*fx_version\s+[^\n]*\n)/m;
-            if (fxVersionRegex.test(content)) {
-                content = content.replace(fxVersionRegex, `$1${replacement}\n`);
-            }
-            else {
-                content = `${replacement}\n${content}`;
-            }
-        }
-    }
-    fs_1.default.writeFileSync(fxmanifestPath, content, 'utf8');
-}
-/**
- * Creates directory recursively
- * @param dirPath Path to directory
- */
-async function createDirectory(dirPath) {
-    if (!fs_1.default.existsSync(dirPath)) {
-        fs_1.default.mkdirSync(dirPath, { recursive: true });
-    }
-}
-// File extensions that are considered archives and should be excluded
-const ARCHIVE_EXTENSIONS = [
-    '.zip',
-    '.rar',
-    '.7z',
-    '.tar',
-    '.gz',
-    '.tgz',
-    '.bz2',
-    '.xz'
-];
-/**
- * Check if a file is an archive based on its extension
- * @param filename The filename to check
- * @returns true if the file is an archive
- */
-function isArchive(filename) {
-    const ext = path_2.default.extname(filename).toLowerCase();
-    return ARCHIVE_EXTENSIONS.includes(ext);
-}
-/**
- * Copies files and directories recursively
- * @param src Source path
- * @param dest Destination path
- * @param excludeDirs Directories to exclude
- * @param excludeArchives Whether to exclude archive files (default: true)
- */
-function copyRecursively(src, dest, excludeDirs = [], excludeArchives = true) {
-    const stats = fs_1.default.statSync(src);
-    if (stats.isDirectory()) {
-        if (excludeDirs.includes(path_2.default.basename(src))) {
-            return;
-        }
-        if (!fs_1.default.existsSync(dest)) {
-            fs_1.default.mkdirSync(dest, { recursive: true });
-        }
-        const entries = fs_1.default.readdirSync(src);
-        for (const entry of entries) {
-            if (excludeDirs.includes(entry)) {
-                continue;
-            }
-            // Skip archive files if excludeArchives is true
-            if (excludeArchives && isArchive(entry)) {
-                core.debug(`Skipping archive file: ${entry}`);
-                continue;
-            }
-            copyRecursively(path_2.default.join(src, entry), path_2.default.join(dest, entry), excludeDirs, excludeArchives);
-        }
-    }
-    else if (stats.isFile()) {
-        // Skip archive files if excludeArchives is true
-        if (excludeArchives && isArchive(path_2.default.basename(src))) {
-            core.debug(`Skipping archive file: ${src}`);
-            return;
-        }
-        fs_1.default.copyFileSync(src, dest);
-    }
+async function createOpenSourceVersion(_assetName) {
+    return createResourceVersion({
+        type: 'opensource',
+        assetName: _assetName
+    });
 }
 /**
  * Creates a zip file from a directory
  * @param sourceDir Source directory to zip
  * @param zipPath Output zip file path
- * @param rootFolderName Name of the root folder in the zip
+ * @param _rootFolderName Name of the root folder in the zip (unused, kept for API compatibility)
+ * @param excludePaths Paths to exclude from the zip
  * @returns Promise resolving to the absolute path of the created zip file
  */
-async function zipDirectory(sourceDir, zipPath, rootFolderName, excludePaths = []) {
+async function zipDirectory(sourceDir, zipPath, _rootFolderName, excludePaths = []) {
     const zipfile = new yazl_1.default.ZipFile();
     const outputZipPath = path_2.default.resolve(zipPath);
     // Normalize exclude paths for comparison
@@ -297436,9 +297408,8 @@ async function createVersions(options, assetName) {
     deleteIfExists('escrowed/');
     deleteIfExists('open-source/');
     if (options.createEscrowed) {
-        const escrowIgnoreFiles = options.escrowedConfig?.escrow_ignore;
         const escrowedName = options.escrowedConfig?.asset_name || `${assetName}-escrowed`;
-        zipPaths.escrowed = await createEscrowedVersion(escrowedName, escrowIgnoreFiles);
+        zipPaths.escrowed = await createEscrowedVersion(escrowedName);
     }
     if (options.createOpenSource) {
         const openSourceName = options.openSourceConfig?.asset_name || `${assetName}-source`;
