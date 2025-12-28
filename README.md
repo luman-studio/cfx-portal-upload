@@ -19,7 +19,8 @@ GitHub Action for automatically uploading FiveM resources to the CFX Portal.
 
 ### 1. Create Asset on CFX Portal
 
-Go to [portal.cfx.re](https://portal.cfx.re) and create an asset for your resource. Note the **asset name** — you'll need it later.
+Go to [portal.cfx.re](https://portal.cfx.re) and create an asset for your
+resource. Note the **asset name** — you'll need it later.
 
 ### 2. Get Authentication Cookie
 
@@ -140,30 +141,32 @@ For resources with multiple quality levels:
 
 ### Action Inputs
 
-| Parameter    | Type    | Required | Description                                      |
-|--------------|---------|----------|--------------------------------------------------|
-| `cookie`     | string  | Yes      | Value of `_t` cookie from forum.cfx.re           |
-| `escrowed`   | yaml    | No       | Escrowed version configuration                   |
-| `openSource` | yaml    | No       | Open source version configuration                |
-| `hq`         | yaml    | No       | HQ version configuration                         |
-| `lq`         | yaml    | No       | LQ version configuration                         |
-| `skipUpload` | boolean | No       | Skip upload, authenticate only                   |
+| Parameter    | Type    | Required | Description                            |
+| ------------ | ------- | -------- | -------------------------------------- |
+| `cookie`     | string  | Yes      | Value of `_t` cookie from forum.cfx.re |
+| `escrowed`   | yaml    | No       | Escrowed version configuration         |
+| `openSource` | yaml    | No       | Open source version configuration      |
+| `hq`         | yaml    | No       | HQ version configuration               |
+| `lq`         | yaml    | No       | LQ version configuration               |
+| `skipUpload` | boolean | No       | Skip upload, authenticate only         |
 
 ### Version Configuration
 
-| Parameter    | Description                                          |
-|--------------|------------------------------------------------------|
-| `asset_name` | Asset name on the portal (case-sensitive)            |
-| `asset_id`   | Asset ID (alternative to asset_name)                 |
-| `branch`     | Git branch to use (only for hq/lq)                   |
+| Parameter    | Description                               |
+| ------------ | ----------------------------------------- |
+| `asset_name` | Asset name on the portal (case-sensitive) |
+| `asset_id`   | Asset ID (alternative to asset_name)      |
+| `branch`     | Git branch to use (only for hq/lq)        |
 
 <br>
 
 ## escrow_ignore
 
-The action preserves your `escrow_ignore` configuration for escrowed versions. You control which files remain unencrypted through your `fxmanifest.lua`.
+The action preserves your `escrow_ignore` configuration for escrowed versions.
+You control which files remain unencrypted through your `fxmanifest.lua`.
 
-For **openSource** versions, the action automatically sets `escrow_ignore { '**/*' }` so all files remain open.
+For **openSource** versions, the action automatically sets
+`escrow_ignore { '**/*' }` so all files remain open.
 
 ```lua
 escrow_ignore {
@@ -177,7 +180,8 @@ escrow_ignore {
 
 ## Keeping Cookie Active
 
-The cookie may expire due to inactivity. Add a scheduled workflow to keep it active:
+The cookie may expire due to inactivity. Add a scheduled workflow to keep it
+active:
 
 ```yaml
 name: Refresh Cookie
@@ -202,14 +206,18 @@ jobs:
 ## Troubleshooting
 
 **"No assets found matching..."**
+
 - Verify the asset name matches exactly (case-sensitive)
 
 **"Authentication failed"**
+
 - Cookie has expired — obtain a new one from forum.cfx.re
 - Do not log out after copying the cookie; clear it from your browser instead
 
 **"asset must not contain an archive"**
-- Archive files (.zip, .rar, .7z) are automatically excluded, but avoid storing them in the repository
+
+- Archive files (.zip, .rar, .7z) are automatically excluded, but avoid storing
+  them in the repository
 
 <br>
 

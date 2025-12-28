@@ -41,7 +41,6 @@ const ARCHIVE_EXTENSIONS = [
   '.xz'
 ]
 
-
 // ============================================================================
 // LOW-LEVEL UTILITIES
 // ============================================================================
@@ -560,7 +559,12 @@ async function buildWebAndDui(): Promise<void> {
                 if (!fs.existsSync(targetDuiBuildPath)) {
                   fs.mkdirSync(targetDuiBuildPath, { recursive: true })
                 }
-                copyRecursivelyFiltered(duiBuildPath, targetDuiBuildPath, [], false)
+                copyRecursivelyFiltered(
+                  duiBuildPath,
+                  targetDuiBuildPath,
+                  [],
+                  false
+                )
               }
 
               core.info('✅ DUI build completed')

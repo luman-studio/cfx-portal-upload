@@ -492,9 +492,20 @@ async function getRedirectUrl(page: Page, maxRetries: number): Promise<string> {
 async function setForumCookie(browser: Browser, page: Page): Promise<void> {
   core.info('Setting cookies ...')
 
+  const cookieValue = core.getInput('cookie')
+  if (!cookieValue || cookieValue.trim() === '') {
+    throw new Error(
+      'FORUM_COOKIE secret is not set or empty.\n' +
+        'Please add the FORUM_COOKIE secret to your repository:\n' +
+        '1. Go to Settings → Secrets and variables → Actions\n' +
+        '2. Click "New repository secret"\n' +
+        '3. Name: FORUM_COOKIE, Value: your _t cookie from forum.cfx.re'
+    )
+  }
+
   await browser.setCookie({
     name: '_t',
-    value: core.getInput('cookie'),
+    value: cookieValue,
     domain: 'forum.cfx.re',
     path: '/',
     expires: -1,
