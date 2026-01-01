@@ -319681,12 +319681,37 @@ async function findAssetByName(cookie, assetName) {
     throw new Error(`Asset "${assetName}" not found on CFX Portal`);
 }
 /**
+ * Wait for asset version to become active
+ */
+async function waitForActiveVersion(cookie, assetName, maxAttempts = 10, delayMs = 5000) {
+    core.info(`Waiting for asset "${assetName}" to have an active version...`);
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const asset = await findAssetByName(cookie, assetName);
+        if (asset.versions && asset.versions.length > 0) {
+            const activeVersion = asset.versions.find(v => v.state === 'active');
+            if (activeVersion) {
+                core.info(`Found active version: ${activeVersion.id}`);
+                return asset;
+            }
+            // Log current states
+            const states = asset.versions.map(v => v.state).join(', ');
+            core.info(`Attempt ${attempt}/${maxAttempts}: Version states: ${states}`);
+        }
+        if (attempt < maxAttempts) {
+            core.info(`Waiting ${delayMs / 1000}s before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+    }
+    throw new Error(`Asset "${assetName}" has no active version after ${maxAttempts} attempts. ` +
+        `The version may still be processing. Try again later.`);
+}
+/**
  * Download asset from CFX Portal
  */
 async function downloadAsset(cookie, assetName, resourceName) {
     core.info(`Downloading asset "${assetName}" from CFX Portal...`);
-    // Find asset
-    const asset = await findAssetByName(cookie, assetName);
+    // Wait for asset to have an active version (may take time after upload)
+    const asset = await waitForActiveVersion(cookie, assetName);
     if (!asset.versions || asset.versions.length === 0) {
         throw new Error(`Asset "${assetName}" has no versions`);
     }
