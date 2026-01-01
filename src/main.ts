@@ -314,9 +314,7 @@ export async function run(): Promise<void> {
 
       // Deploy after successful upload
       const assetToDeployName =
-        escrowedConfig?.asset_name ||
-        openSourceConfig?.asset_name ||
-        assetName
+        escrowedConfig?.asset_name || openSourceConfig?.asset_name || assetName
 
       let deployed = false
       if (deployConfig.enabled) {
@@ -355,7 +353,8 @@ export async function run(): Promise<void> {
     // Send Discord notification on failure
     const discordWebhook = core.getInput('discord_webhook')
     if (discordWebhook) {
-      const assetName = core.getInput('assetName') || core.getInput('assetId') || 'Unknown'
+      const assetName =
+        core.getInput('assetName') || core.getInput('assetId') || 'Unknown'
       await sendDiscordNotification({
         webhookUrl: discordWebhook,
         assetName,

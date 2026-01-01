@@ -188,11 +188,13 @@ Automatically deploy assets to your FiveM server after uploading to the portal.
 ### SSH Key Setup
 
 1. Generate an SSH key:
+
    ```bash
    ssh-keygen -t ed25519 -C "github-actions" -f github-actions
    ```
 
 2. Add the public key to your server:
+
    ```bash
    cat github-actions.pub >> ~/.ssh/authorized_keys
    ```
@@ -208,20 +210,20 @@ Automatically deploy assets to your FiveM server after uploading to the portal.
 
 ### Action Inputs
 
-| Parameter              | Type    | Required | Description                               |
-| ---------------------- | ------- | -------- | ----------------------------------------- |
-| `cookie`               | string  | Yes      | Value of `_t` cookie from forum.cfx.re    |
-| `escrowed`             | yaml    | No       | Escrowed version configuration            |
-| `openSource`           | yaml    | No       | Open source version configuration         |
-| `resourcePath`         | string  | No       | Path to resource folder (for monorepos)   |
-| `skipUpload`           | boolean | No       | Skip upload, authenticate only            |
-| `deploy`               | boolean | No       | Enable deploy to server after upload      |
-| `ssh_host`             | string  | No       | SSH host address for deployment           |
-| `ssh_user`             | string  | No       | SSH username                              |
-| `ssh_key`              | string  | No       | SSH private key                           |
-| `ssh_port`             | string  | No       | SSH port (default: 22)                    |
-| `deploy_path`          | string  | No       | Path to resources folder on server        |
-| `deploy_resource_name` | string  | No       | Resource folder name (defaults to asset)  |
+| Parameter              | Type    | Required | Description                              |
+| ---------------------- | ------- | -------- | ---------------------------------------- |
+| `cookie`               | string  | Yes      | Value of `_t` cookie from forum.cfx.re   |
+| `escrowed`             | yaml    | No       | Escrowed version configuration           |
+| `openSource`           | yaml    | No       | Open source version configuration        |
+| `resourcePath`         | string  | No       | Path to resource folder (for monorepos)  |
+| `skipUpload`           | boolean | No       | Skip upload, authenticate only           |
+| `deploy`               | boolean | No       | Enable deploy to server after upload     |
+| `ssh_host`             | string  | No       | SSH host address for deployment          |
+| `ssh_user`             | string  | No       | SSH username                             |
+| `ssh_key`              | string  | No       | SSH private key                          |
+| `ssh_port`             | string  | No       | SSH port (default: 22)                   |
+| `deploy_path`          | string  | No       | Path to resources folder on server       |
+| `deploy_resource_name` | string  | No       | Resource folder name (defaults to asset) |
 
 ### Version Configuration
 

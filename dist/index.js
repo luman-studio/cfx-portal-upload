@@ -319746,14 +319746,18 @@ async function downloadAsset(cookie, assetName, resourceName) {
     const contentType = response.headers['content-type'] || '';
     core.info(`Response content-type: ${contentType}`);
     if (response.data.length < 100) {
-        const textContent = Buffer.from(response.data).toString('utf8').substring(0, 500);
+        const textContent = Buffer.from(response.data)
+            .toString('utf8')
+            .substring(0, 500);
         core.error(`Response too small (${response.data.length} bytes): ${textContent}`);
         throw new Error('Downloaded file is too small, likely an error response');
     }
     // Check ZIP magic bytes (PK)
     const header = Buffer.from(response.data).subarray(0, 2);
     if (header[0] !== 0x50 || header[1] !== 0x4b) {
-        const textContent = Buffer.from(response.data).toString('utf8').substring(0, 500);
+        const textContent = Buffer.from(response.data)
+            .toString('utf8')
+            .substring(0, 500);
         core.error(`Invalid ZIP file header. Content preview: ${textContent}`);
         throw new Error('Downloaded file is not a valid ZIP archive');
     }
@@ -319796,12 +319800,12 @@ async function deployToServer(sshConfig, deployPath, resourceName, zipPath) {
                     const remoteResourcePath = `${expandedPath}/${resourceName}`;
                     core.info(`Extracting to ${remoteResourcePath}...`);
                     const commands = [
-                        `rm -rf ${remoteResourcePath}`,
-                        `mkdir -p ${remoteResourcePath}`,
-                        `unzip -o "${remoteTempPath}" -d ${remoteResourcePath}`,
+                        `rm -rf "${remoteResourcePath}"`,
+                        `mkdir -p "${remoteResourcePath}"`,
+                        `unzip -o "${remoteTempPath}" -d "${remoteResourcePath}"`,
                         `rm "${remoteTempPath}"`,
                         // Fix structure if zip contains single folder
-                        `cd ${remoteResourcePath} && if [ $(ls -d */ 2>/dev/null | wc -l) -eq 1 ] && [ $(ls -A | wc -l) -eq 1 ]; then subdir=$(ls -d */); mv "$subdir"* . 2>/dev/null || true; mv "$subdir".* . 2>/dev/null || true; rmdir "$subdir" 2>/dev/null || true; fi`
+                        `cd "${remoteResourcePath}" && if [ $(ls -d */ 2>/dev/null | wc -l) -eq 1 ] && [ $(ls -A | wc -l) -eq 1 ]; then subdir=$(ls -d */); mv "$subdir"* . 2>/dev/null || true; mv "$subdir".* . 2>/dev/null || true; rmdir "$subdir" 2>/dev/null || true; fi`
                     ];
                     const fullCommand = commands.join(' && ');
                     conn.exec(fullCommand, (execErr, stream) => {
@@ -319930,7 +319934,9 @@ async function sendDiscordNotification(options) {
     }
     core.info('Sending Discord notification...');
     const repoName = process.env.GITHUB_REPOSITORY || 'Unknown';
-    const runUrl = process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
+    const runUrl = process.env.GITHUB_SERVER_URL &&
+        process.env.GITHUB_REPOSITORY &&
+        process.env.GITHUB_RUN_ID
         ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
         : null;
     const embed = {
@@ -320295,9 +320301,7 @@ async function run() {
                 await uploadZip(zipPath, assetId, chunkSize, cookies);
             }
             // Deploy after successful upload
-            const assetToDeployName = escrowedConfig?.asset_name ||
-                openSourceConfig?.asset_name ||
-                assetName;
+            const assetToDeployName = escrowedConfig?.asset_name || openSourceConfig?.asset_name || assetName;
             let deployed = false;
             if (deployConfig.enabled) {
                 if (assetToDeployName) {

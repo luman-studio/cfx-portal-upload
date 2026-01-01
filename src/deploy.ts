@@ -78,7 +78,7 @@ async function waitForActiveVersion(
 
   throw new Error(
     `Asset "${assetName}" has no active version after ${maxAttempts} attempts. ` +
-    `The version may still be processing. Try again later.`
+      `The version may still be processing. Try again later.`
   )
 }
 
@@ -110,7 +110,9 @@ export async function downloadAsset(
 
   const pack = version.packs[0]
 
-  core.info(`Asset ID: ${asset.id}, Version ID: ${version.id}, Pack ID: ${pack.id}`)
+  core.info(
+    `Asset ID: ${asset.id}, Version ID: ${version.id}, Pack ID: ${pack.id}`
+  )
 
   // Download - first get the signed URL from API
   const downloadUrl = `${PORTAL_API}/assets/${asset.id}/versions/${version.id}/packs/${pack.id}/download`
@@ -140,15 +142,21 @@ export async function downloadAsset(
   core.info(`Response content-type: ${contentType}`)
 
   if (response.data.length < 100) {
-    const textContent = Buffer.from(response.data).toString('utf8').substring(0, 500)
-    core.error(`Response too small (${response.data.length} bytes): ${textContent}`)
+    const textContent = Buffer.from(response.data)
+      .toString('utf8')
+      .substring(0, 500)
+    core.error(
+      `Response too small (${response.data.length} bytes): ${textContent}`
+    )
     throw new Error('Downloaded file is too small, likely an error response')
   }
 
   // Check ZIP magic bytes (PK)
   const header = Buffer.from(response.data).subarray(0, 2)
   if (header[0] !== 0x50 || header[1] !== 0x4b) {
-    const textContent = Buffer.from(response.data).toString('utf8').substring(0, 500)
+    const textContent = Buffer.from(response.data)
+      .toString('utf8')
+      .substring(0, 500)
     core.error(`Invalid ZIP file header. Content preview: ${textContent}`)
     throw new Error('Downloaded file is not a valid ZIP archive')
   }
@@ -211,12 +219,12 @@ export async function deployToServer(
           core.info(`Extracting to ${remoteResourcePath}...`)
 
           const commands = [
-            `rm -rf ${remoteResourcePath}`,
-            `mkdir -p ${remoteResourcePath}`,
-            `unzip -o "${remoteTempPath}" -d ${remoteResourcePath}`,
+            `rm -rf "${remoteResourcePath}"`,
+            `mkdir -p "${remoteResourcePath}"`,
+            `unzip -o "${remoteTempPath}" -d "${remoteResourcePath}"`,
             `rm "${remoteTempPath}"`,
             // Fix structure if zip contains single folder
-            `cd ${remoteResourcePath} && if [ $(ls -d */ 2>/dev/null | wc -l) -eq 1 ] && [ $(ls -A | wc -l) -eq 1 ]; then subdir=$(ls -d */); mv "$subdir"* . 2>/dev/null || true; mv "$subdir".* . 2>/dev/null || true; rmdir "$subdir" 2>/dev/null || true; fi`
+            `cd "${remoteResourcePath}" && if [ $(ls -d */ 2>/dev/null | wc -l) -eq 1 ] && [ $(ls -A | wc -l) -eq 1 ]; then subdir=$(ls -d */); mv "$subdir"* . 2>/dev/null || true; mv "$subdir".* . 2>/dev/null || true; rmdir "$subdir" 2>/dev/null || true; fi`
           ]
 
           const fullCommand = commands.join(' && ')

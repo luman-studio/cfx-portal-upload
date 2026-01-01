@@ -17,7 +17,15 @@ export interface DiscordNotifyOptions {
 export async function sendDiscordNotification(
   options: DiscordNotifyOptions
 ): Promise<void> {
-  const { webhookUrl, assetName, success, deployed, deployHost, resourceName, error } = options
+  const {
+    webhookUrl,
+    assetName,
+    success,
+    deployed,
+    deployHost,
+    resourceName,
+    error
+  } = options
 
   if (!webhookUrl) {
     return
@@ -26,9 +34,12 @@ export async function sendDiscordNotification(
   core.info('Sending Discord notification...')
 
   const repoName = process.env.GITHUB_REPOSITORY || 'Unknown'
-  const runUrl = process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
-    ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
-    : null
+  const runUrl =
+    process.env.GITHUB_SERVER_URL &&
+    process.env.GITHUB_REPOSITORY &&
+    process.env.GITHUB_RUN_ID
+      ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+      : null
 
   const embed: any = {
     title: success ? '✅ Upload Successful' : '❌ Upload Failed',
