@@ -319658,6 +319658,12 @@ const path_1 = __importDefault(__nccwpck_require__(16928));
 const ssh2_1 = __nccwpck_require__(85472);
 const PORTAL_API = 'https://portal-api.cfx.re/v1';
 /**
+ * Normalize resource name for filesystem: lowercase and replace spaces with underscores
+ */
+function normalizeResourceName(name) {
+    return name.toLowerCase().replace(/\s+/g, '_');
+}
+/**
  * Find asset by name from CFX Portal
  */
 async function findAssetByName(cookie, assetName) {
@@ -319860,7 +319866,9 @@ async function deployAsset(cookie, assetName, deployConfig) {
     core.info('='.repeat(50));
     core.info('Starting deployment...');
     core.info('='.repeat(50));
-    const resourceName = deployConfig.resourceName || assetName;
+    const rawResourceName = deployConfig.resourceName || assetName;
+    const resourceName = normalizeResourceName(rawResourceName);
+    core.info(`Resource name normalized: "${rawResourceName}" -> "${resourceName}"`);
     // Download asset from portal
     const zipPath = await downloadAsset(cookie, assetName, resourceName);
     // Deploy to server

@@ -13,6 +13,13 @@ import {
 const PORTAL_API = 'https://portal-api.cfx.re/v1'
 
 /**
+ * Normalize resource name for filesystem: lowercase and replace spaces with underscores
+ */
+function normalizeResourceName(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, '_')
+}
+
+/**
  * Find asset by name from CFX Portal
  */
 async function findAssetByName(
@@ -297,7 +304,12 @@ export async function deployAsset(
   core.info('Starting deployment...')
   core.info('='.repeat(50))
 
-  const resourceName = deployConfig.resourceName || assetName
+  const rawResourceName = deployConfig.resourceName || assetName
+  const resourceName = normalizeResourceName(rawResourceName)
+
+  core.info(
+    `Resource name normalized: "${rawResourceName}" -> "${resourceName}"`
+  )
 
   // Download asset from portal
   const zipPath = await downloadAsset(cookie, assetName, resourceName)
