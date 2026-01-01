@@ -49,3 +49,40 @@ export interface ZipPaths {
   escrowed?: string
   openSource?: string
 }
+
+export interface SSHConfig {
+  host: string
+  port: number
+  username: string
+  privateKey: string
+}
+
+export interface DeployConfig {
+  enabled: boolean
+  sshConfig?: SSHConfig
+  deployPath: string
+  resourceName?: string
+}
+
+export interface AssetVersionInfo {
+  assetId: number
+  versionId: number
+  packId: number
+}
+
+export interface PortalAsset {
+  id: number
+  name: string
+  state: string
+  versions: {
+    id: number
+    state: string
+    packs: { id: number; game: string }[]
+  }[]
+}
+
+export interface PortalAssetsResponse {
+  items: PortalAsset[]
+  page: number
+  page_count: number
+}

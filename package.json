@@ -72,6 +72,7 @@
     "axios": "^1.7.9",
     "form-data": "^4.0.1",
     "puppeteer": "^23.10.4",
+    "ssh2": "^1.15.0",
     "yazl": "^3.3.1"
   },
   "devDependencies": {
@@ -79,6 +80,7 @@
     "@jest/globals": "^29.7.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.1",
+    "@types/ssh2": "^1.15.0",
     "@types/yazl": "^2.4.6",
     "@typescript-eslint/eslint-plugin": "^8.17.0",
     "@typescript-eslint/parser": "^8.17.0",

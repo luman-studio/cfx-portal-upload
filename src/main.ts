@@ -5,7 +5,14 @@ import axios from 'axios'
 
 import { createReadStream, statSync } from 'fs'
 import { basename } from 'path'
-import { ReUploadResponse, SSOResponseBody, BuildOptions } from './types'
+import {
+  ReUploadResponse,
+  SSOResponseBody,
+  BuildOptions,
+  DeployConfig,
+  SSHConfig
+} from './types'
+import { deployAsset } from './deploy'
 import {
   deleteIfExists,
   resolveAssetId,
@@ -90,6 +97,31 @@ export async function run(): Promise<void> {
 
     const chunkSize = parseInt(core.getInput('chunkSize'))
     const maxRetries = parseInt(core.getInput('maxRetries'))
+
+    // Deploy config
+    const deployEnabled = core.getInput('deploy').toLowerCase() === 'true'
+    const sshHost = core.getInput('ssh_host')
+    const sshUser = core.getInput('ssh_user')
+    const sshKey = core.getInput('ssh_key')
+    const sshPort = parseInt(core.getInput('ssh_port') || '22')
+    const deployPath = core.getInput('deploy_path') || '~/fivem/resources'
+    const deployResourceName = core.getInput('deploy_resource_name')
+
+    const deployConfig: DeployConfig = {
+      enabled: deployEnabled && !!sshHost && !!sshUser && !!sshKey,
+      deployPath,
+      resourceName: deployResourceName || undefined
+    }
+
+    if (deployConfig.enabled) {
+      deployConfig.sshConfig = {
+        host: sshHost,
+        port: sshPort,
+        username: sshUser,
+        privateKey: sshKey
+      }
+      core.info('Deploy enabled - will deploy after upload')
+    }
 
     if (isNaN(chunkSize)) {
       throw new Error('Invalid chunk size. Must be a number.')
@@ -276,6 +308,21 @@ export async function run(): Promise<void> {
 
         zipPath = await getZipPath(assetName, zipPath, makeZip)
         await uploadZip(zipPath, assetId, chunkSize, cookies)
+      }
+
+      // Deploy after successful upload
+      if (deployConfig.enabled) {
+        // Determine which asset to deploy
+        const assetToDeployName =
+          escrowedConfig?.asset_name ||
+          openSourceConfig?.asset_name ||
+          assetName
+
+        if (assetToDeployName) {
+          await deployAsset(cookies, assetToDeployName, deployConfig)
+        } else {
+          core.warning('Deploy enabled but no asset name found to deploy')
+        }
       }
     } else {
       core.error(`❌ Failed to reach CFX Portal`)

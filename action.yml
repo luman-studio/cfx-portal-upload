@@ -52,6 +52,32 @@ inputs:
     description: 'Open source version config (YAML: asset_id, asset_name)'
     required: false
 
+  # Deploy configuration (optional)
+  deploy:
+    description: 'Enable deploy to server after upload'
+    required: false
+    default: 'false'
+  ssh_host:
+    description: 'SSH host address for deployment'
+    required: false
+  ssh_user:
+    description: 'SSH username'
+    required: false
+  ssh_key:
+    description: 'SSH private key'
+    required: false
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+  deploy_path:
+    description: 'Path to resources folder on server'
+    required: false
+    default: '~/fivem/resources'
+  deploy_resource_name:
+    description: 'Resource folder name on server (defaults to asset_name)'
+    required: false
+
 runs:
   using: node20
   main: dist/index.js
