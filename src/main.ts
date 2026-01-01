@@ -13,6 +13,7 @@ import {
   SSHConfig
 } from './types'
 import { deployAsset } from './deploy'
+import { sendDiscordNotification } from './discord'
 import {
   deleteIfExists,
   resolveAssetId,
@@ -106,6 +107,7 @@ export async function run(): Promise<void> {
     const sshPort = parseInt(core.getInput('ssh_port') || '22')
     const deployPath = core.getInput('deploy_path') || '~/fivem/resources'
     const deployResourceName = core.getInput('deploy_resource_name')
+    const discordWebhook = core.getInput('discord_webhook')
 
     const deployConfig: DeployConfig = {
       enabled: deployEnabled && !!sshHost && !!sshUser && !!sshKey,
@@ -311,18 +313,31 @@ export async function run(): Promise<void> {
       }
 
       // Deploy after successful upload
-      if (deployConfig.enabled) {
-        // Determine which asset to deploy
-        const assetToDeployName =
-          escrowedConfig?.asset_name ||
-          openSourceConfig?.asset_name ||
-          assetName
+      const assetToDeployName =
+        escrowedConfig?.asset_name ||
+        openSourceConfig?.asset_name ||
+        assetName
 
+      let deployed = false
+      if (deployConfig.enabled) {
         if (assetToDeployName) {
           await deployAsset(cookies, assetToDeployName, deployConfig)
+          deployed = true
         } else {
           core.warning('Deploy enabled but no asset name found to deploy')
         }
+      }
+
+      // Send Discord notification on success
+      if (discordWebhook) {
+        await sendDiscordNotification({
+          webhookUrl: discordWebhook,
+          assetName: assetToDeployName || 'Unknown',
+          success: true,
+          deployed,
+          deployHost: deployConfig.sshConfig?.host,
+          resourceName: deployConfig.resourceName || assetToDeployName
+        })
       }
     } else {
       core.error(`❌ Failed to reach CFX Portal`)
@@ -334,8 +349,19 @@ export async function run(): Promise<void> {
       )
     }
   } catch (error) {
-    if (error instanceof Error) {
-      core.setFailed(error.message)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    core.setFailed(errorMessage)
+
+    // Send Discord notification on failure
+    const discordWebhook = core.getInput('discord_webhook')
+    if (discordWebhook) {
+      const assetName = core.getInput('assetName') || core.getInput('assetId') || 'Unknown'
+      await sendDiscordNotification({
+        webhookUrl: discordWebhook,
+        assetName,
+        success: false,
+        error: errorMessage
+      })
     }
   } finally {
     await browser.close()

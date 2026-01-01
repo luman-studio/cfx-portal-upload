@@ -319875,6 +319875,116 @@ async function deployAsset(cookie, assetName, deployConfig) {
 
 /***/ }),
 
+/***/ 67791:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.sendDiscordNotification = sendDiscordNotification;
+const core = __importStar(__nccwpck_require__(37484));
+const axios_1 = __importDefault(__nccwpck_require__(87269));
+/**
+ * Send notification to Discord webhook
+ */
+async function sendDiscordNotification(options) {
+    const { webhookUrl, assetName, success, deployed, deployHost, resourceName, error } = options;
+    if (!webhookUrl) {
+        return;
+    }
+    core.info('Sending Discord notification...');
+    const repoName = process.env.GITHUB_REPOSITORY || 'Unknown';
+    const runUrl = process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
+        ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+        : null;
+    const embed = {
+        title: success ? '✅ Upload Successful' : '❌ Upload Failed',
+        color: success ? 0x00ff00 : 0xff0000,
+        fields: [
+            {
+                name: 'Asset',
+                value: assetName || 'Unknown',
+                inline: true
+            },
+            {
+                name: 'Repository',
+                value: repoName,
+                inline: true
+            }
+        ],
+        timestamp: new Date().toISOString()
+    };
+    if (success && deployed) {
+        embed.fields.push({
+            name: 'Deployed',
+            value: `✅ ${resourceName || assetName} → ${deployHost}`,
+            inline: false
+        });
+    }
+    if (!success && error) {
+        embed.fields.push({
+            name: 'Error',
+            value: error.substring(0, 1000),
+            inline: false
+        });
+    }
+    if (runUrl) {
+        embed.fields.push({
+            name: 'Action Run',
+            value: `[View Details](${runUrl})`,
+            inline: false
+        });
+    }
+    try {
+        await axios_1.default.post(webhookUrl, {
+            embeds: [embed]
+        });
+        core.info('Discord notification sent');
+    }
+    catch (err) {
+        core.warning(`Failed to send Discord notification: ${err}`);
+    }
+}
+
+
+/***/ }),
+
 /***/ 79407:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
@@ -319941,6 +320051,7 @@ const axios_1 = __importDefault(__nccwpck_require__(87269));
 const fs_1 = __nccwpck_require__(79896);
 const path_1 = __nccwpck_require__(16928);
 const deploy_1 = __nccwpck_require__(29880);
+const discord_1 = __nccwpck_require__(67791);
 const utils_1 = __nccwpck_require__(71798);
 /**
  * The main function for the action.
@@ -320016,6 +320127,7 @@ async function run() {
         const sshPort = parseInt(core.getInput('ssh_port') || '22');
         const deployPath = core.getInput('deploy_path') || '~/fivem/resources';
         const deployResourceName = core.getInput('deploy_resource_name');
+        const discordWebhook = core.getInput('discord_webhook');
         const deployConfig = {
             enabled: deployEnabled && !!sshHost && !!sshUser && !!sshKey,
             deployPath,
@@ -320183,17 +320295,29 @@ async function run() {
                 await uploadZip(zipPath, assetId, chunkSize, cookies);
             }
             // Deploy after successful upload
+            const assetToDeployName = escrowedConfig?.asset_name ||
+                openSourceConfig?.asset_name ||
+                assetName;
+            let deployed = false;
             if (deployConfig.enabled) {
-                // Determine which asset to deploy
-                const assetToDeployName = escrowedConfig?.asset_name ||
-                    openSourceConfig?.asset_name ||
-                    assetName;
                 if (assetToDeployName) {
                     await (0, deploy_1.deployAsset)(cookies, assetToDeployName, deployConfig);
+                    deployed = true;
                 }
                 else {
                     core.warning('Deploy enabled but no asset name found to deploy');
                 }
+            }
+            // Send Discord notification on success
+            if (discordWebhook) {
+                await (0, discord_1.sendDiscordNotification)({
+                    webhookUrl: discordWebhook,
+                    assetName: assetToDeployName || 'Unknown',
+                    success: true,
+                    deployed,
+                    deployHost: deployConfig.sshConfig?.host,
+                    resourceName: deployConfig.resourceName || assetToDeployName
+                });
             }
         }
         else {
@@ -320205,8 +320329,18 @@ async function run() {
         }
     }
     catch (error) {
-        if (error instanceof Error) {
-            core.setFailed(error.message);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        core.setFailed(errorMessage);
+        // Send Discord notification on failure
+        const discordWebhook = core.getInput('discord_webhook');
+        if (discordWebhook) {
+            const assetName = core.getInput('assetName') || core.getInput('assetId') || 'Unknown';
+            await (0, discord_1.sendDiscordNotification)({
+                webhookUrl: discordWebhook,
+                assetName,
+                success: false,
+                error: errorMessage
+            });
         }
     }
     finally {

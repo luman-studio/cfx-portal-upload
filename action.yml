@@ -78,6 +78,11 @@ inputs:
     description: 'Resource folder name on server (defaults to asset_name)'
     required: false
 
+  # Discord notifications (optional)
+  discord_webhook:
+    description: 'Discord webhook URL for notifications'
+    required: false
+
 runs:
   using: node20
   main: dist/index.js
