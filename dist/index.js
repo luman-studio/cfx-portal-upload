@@ -319779,7 +319779,6 @@ async function deployToServer(sshConfig, deployPath, resourceName, zipPath) {
                     return;
                 }
                 const remoteTempPath = `/tmp/${resourceName}.zip`;
-                const remoteResourcePath = `${deployPath}/${resourceName}`;
                 core.info(`Uploading to ${remoteTempPath}...`);
                 const fileData = fs_1.default.readFileSync(zipPath);
                 sftp.writeFile(remoteTempPath, fileData, uploadErr => {
@@ -319789,14 +319788,20 @@ async function deployToServer(sshConfig, deployPath, resourceName, zipPath) {
                         return;
                     }
                     core.info('Upload complete');
+                    // Expand ~ to $HOME in the shell, and construct the path there
+                    // This ensures tilde expansion works correctly
+                    const expandedPath = deployPath.startsWith('~')
+                        ? `$HOME${deployPath.slice(1)}`
+                        : deployPath;
+                    const remoteResourcePath = `${expandedPath}/${resourceName}`;
                     core.info(`Extracting to ${remoteResourcePath}...`);
                     const commands = [
-                        `rm -rf "${remoteResourcePath}"`,
-                        `mkdir -p "${remoteResourcePath}"`,
-                        `unzip -o "${remoteTempPath}" -d "${remoteResourcePath}"`,
+                        `rm -rf ${remoteResourcePath}`,
+                        `mkdir -p ${remoteResourcePath}`,
+                        `unzip -o "${remoteTempPath}" -d ${remoteResourcePath}`,
                         `rm "${remoteTempPath}"`,
                         // Fix structure if zip contains single folder
-                        `cd "${remoteResourcePath}" && if [ $(ls -d */ 2>/dev/null | wc -l) -eq 1 ] && [ $(ls -A | wc -l) -eq 1 ]; then subdir=$(ls -d */); mv "$subdir"* . 2>/dev/null || true; mv "$subdir".* . 2>/dev/null || true; rmdir "$subdir" 2>/dev/null || true; fi`
+                        `cd ${remoteResourcePath} && if [ $(ls -d */ 2>/dev/null | wc -l) -eq 1 ] && [ $(ls -A | wc -l) -eq 1 ]; then subdir=$(ls -d */); mv "$subdir"* . 2>/dev/null || true; mv "$subdir".* . 2>/dev/null || true; rmdir "$subdir" 2>/dev/null || true; fi`
                     ];
                     const fullCommand = commands.join(' && ');
                     conn.exec(fullCommand, (execErr, stream) => {
