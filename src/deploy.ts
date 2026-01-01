@@ -112,15 +112,46 @@ export async function downloadAsset(
 
   core.info(`Asset ID: ${asset.id}, Version ID: ${version.id}, Pack ID: ${pack.id}`)
 
-  // Download
+  // Download - first get the signed URL from API
   const downloadUrl = `${PORTAL_API}/assets/${asset.id}/versions/${version.id}/packs/${pack.id}/download`
-  core.info(`Downloading from: ${downloadUrl}`)
+  core.info(`Requesting download URL from: ${downloadUrl}`)
 
-  const response = await axios.get(downloadUrl, {
-    headers: { Cookie: cookie },
+  // Get the signed URL from the API
+  const urlResponse = await axios.get<{ url: string }>(downloadUrl, {
+    headers: { Cookie: cookie }
+  })
+
+  if (!urlResponse.data?.url) {
+    core.error(`Unexpected API response: ${JSON.stringify(urlResponse.data)}`)
+    throw new Error('API did not return a download URL')
+  }
+
+  const signedUrl = urlResponse.data.url
+  core.info(`Got signed download URL`)
+
+  // Download the actual file from the signed URL
+  const response = await axios.get(signedUrl, {
     responseType: 'arraybuffer',
     maxRedirects: 5
   })
+
+  // Validate response
+  const contentType = response.headers['content-type'] || ''
+  core.info(`Response content-type: ${contentType}`)
+
+  if (response.data.length < 100) {
+    const textContent = Buffer.from(response.data).toString('utf8').substring(0, 500)
+    core.error(`Response too small (${response.data.length} bytes): ${textContent}`)
+    throw new Error('Downloaded file is too small, likely an error response')
+  }
+
+  // Check ZIP magic bytes (PK)
+  const header = Buffer.from(response.data).subarray(0, 2)
+  if (header[0] !== 0x50 || header[1] !== 0x4b) {
+    const textContent = Buffer.from(response.data).toString('utf8').substring(0, 500)
+    core.error(`Invalid ZIP file header. Content preview: ${textContent}`)
+    throw new Error('Downloaded file is not a valid ZIP archive')
+  }
 
   const zipPath = path.join(process.cwd(), `${resourceName}.zip`)
   fs.writeFileSync(zipPath, response.data)
