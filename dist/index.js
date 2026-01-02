@@ -319658,12 +319658,6 @@ const path_1 = __importDefault(__nccwpck_require__(16928));
 const ssh2_1 = __nccwpck_require__(85472);
 const PORTAL_API = 'https://portal-api.cfx.re/v1';
 /**
- * Normalize resource name for filesystem: lowercase and replace spaces with underscores
- */
-function normalizeResourceName(name) {
-    return name.toLowerCase().replace(/\s+/g, '_');
-}
-/**
  * Find asset by name from CFX Portal
  */
 async function findAssetByName(cookie, assetName) {
@@ -319714,7 +319708,7 @@ async function waitForActiveVersion(cookie, assetName, maxAttempts = 10, delayMs
 /**
  * Download asset from CFX Portal
  */
-async function downloadAsset(cookie, assetName, resourceName) {
+async function downloadAsset(cookie, assetName) {
     core.info(`Downloading asset "${assetName}" from CFX Portal...`);
     // Wait for asset to have an active version (may take time after upload)
     const asset = await waitForActiveVersion(cookie, assetName);
@@ -319767,7 +319761,7 @@ async function downloadAsset(cookie, assetName, resourceName) {
         core.error(`Invalid ZIP file header. Content preview: ${textContent}`);
         throw new Error('Downloaded file is not a valid ZIP archive');
     }
-    const zipPath = path_1.default.join(process.cwd(), `${resourceName}.zip`);
+    const zipPath = path_1.default.join(process.cwd(), `${assetName}.zip`);
     fs_1.default.writeFileSync(zipPath, response.data);
     const fileSizeKB = Math.round(response.data.length / 1024);
     core.info(`Downloaded: ${zipPath} (${fileSizeKB} KB)`);
@@ -319776,8 +319770,8 @@ async function downloadAsset(cookie, assetName, resourceName) {
 /**
  * Deploy asset to server via SSH
  */
-async function deployToServer(sshConfig, deployPath, resourceName, zipPath) {
-    core.info(`Deploying "${resourceName}" to ${sshConfig.host}...`);
+async function deployToServer(sshConfig, deployPath, zipPath) {
+    core.info(`Deploying to ${sshConfig.host}...`);
     return new Promise((resolve, reject) => {
         const conn = new ssh2_1.Client();
         conn.on('ready', () => {
@@ -319788,7 +319782,8 @@ async function deployToServer(sshConfig, deployPath, resourceName, zipPath) {
                     reject(err);
                     return;
                 }
-                const remoteTempPath = `/tmp/${resourceName}.zip`;
+                const zipFileName = path_1.default.basename(zipPath);
+                const remoteTempPath = `/tmp/${zipFileName}`;
                 core.info(`Uploading to ${remoteTempPath}...`);
                 const fileData = fs_1.default.readFileSync(zipPath);
                 sftp.writeFile(remoteTempPath, fileData, uploadErr => {
@@ -319803,15 +319798,13 @@ async function deployToServer(sshConfig, deployPath, resourceName, zipPath) {
                     const expandedPath = deployPath.startsWith('~')
                         ? `$HOME${deployPath.slice(1)}`
                         : deployPath;
-                    const remoteResourcePath = `${expandedPath}/${resourceName}`;
-                    core.info(`Extracting to ${remoteResourcePath}...`);
+                    core.info(`Extracting to ${expandedPath}...`);
+                    // ZIP already contains the resource folder (e.g., ghostbusters/)
+                    // Just extract directly to deploy_path and the folder will be created
                     const commands = [
-                        `rm -rf "${remoteResourcePath}"`,
-                        `mkdir -p "${remoteResourcePath}"`,
-                        `unzip -o "${remoteTempPath}" -d "${remoteResourcePath}"`,
-                        `rm "${remoteTempPath}"`,
-                        // Fix structure if zip contains single folder
-                        `cd "${remoteResourcePath}" && if [ $(ls -d */ 2>/dev/null | wc -l) -eq 1 ] && [ $(ls -A | wc -l) -eq 1 ]; then subdir=$(ls -d */); mv "$subdir"* . 2>/dev/null || true; mv "$subdir".* . 2>/dev/null || true; rmdir "$subdir" 2>/dev/null || true; fi`
+                        `mkdir -p "${expandedPath}"`,
+                        `unzip -o "${remoteTempPath}" -d "${expandedPath}"`,
+                        `rm "${remoteTempPath}"`
                     ];
                     const fullCommand = commands.join(' && ');
                     conn.exec(fullCommand, (execErr, stream) => {
@@ -319836,7 +319829,7 @@ async function deployToServer(sshConfig, deployPath, resourceName, zipPath) {
                                 reject(new Error(`SSH command failed with code ${code}`));
                                 return;
                             }
-                            core.info(`Resource deployed to ${remoteResourcePath}`);
+                            core.info(`Resource deployed to ${expandedPath}`);
                             resolve();
                         });
                     });
@@ -319866,13 +319859,10 @@ async function deployAsset(cookie, assetName, deployConfig) {
     core.info('='.repeat(50));
     core.info('Starting deployment...');
     core.info('='.repeat(50));
-    const rawResourceName = deployConfig.resourceName || assetName;
-    const resourceName = normalizeResourceName(rawResourceName);
-    core.info(`Resource name normalized: "${rawResourceName}" -> "${resourceName}"`);
-    // Download asset from portal
-    const zipPath = await downloadAsset(cookie, assetName, resourceName);
-    // Deploy to server
-    await deployToServer(deployConfig.sshConfig, deployConfig.deployPath, resourceName, zipPath);
+    // Download asset from portal (ZIP contains resource folder inside)
+    const zipPath = await downloadAsset(cookie, assetName);
+    // Deploy to server - just extract to deploy_path, folder is already in ZIP
+    await deployToServer(deployConfig.sshConfig, deployConfig.deployPath, zipPath);
     // Cleanup
     try {
         fs_1.default.unlinkSync(zipPath);
@@ -320613,6 +320603,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getResourceName = getResourceName;
 exports.preparePuppeteer = preparePuppeteer;
 exports.resolveAssetId = resolveAssetId;
 exports.getUrl = getUrl;
@@ -320631,6 +320622,31 @@ const axios_1 = __importDefault(__nccwpck_require__(87269));
 const fs_1 = __importDefault(__nccwpck_require__(79896));
 const path_2 = __importDefault(__nccwpck_require__(16928));
 const yazl_1 = __importDefault(__nccwpck_require__(93044));
+// ============================================================================
+// HELPERS
+// ============================================================================
+/**
+ * Get resource name from resourcePath or repository name
+ * @param resourcePath Optional path to resource folder
+ * @returns Resource name (folder name)
+ */
+function getResourceName(resourcePath) {
+    // If resourcePath is specified, use the folder name from it
+    if (resourcePath) {
+        return path_2.default.basename(resourcePath);
+    }
+    // Otherwise use repository name from GITHUB_REPOSITORY (format: owner/repo-name)
+    const repo = process.env.GITHUB_REPOSITORY;
+    if (repo) {
+        return repo.split('/').pop() || repo;
+    }
+    // Fallback to workspace folder name
+    const workspace = process.env.GITHUB_WORKSPACE;
+    if (workspace) {
+        return path_2.default.basename(workspace);
+    }
+    return 'resource';
+}
 // ============================================================================
 // CONSTANTS
 // ============================================================================
@@ -320826,15 +320842,13 @@ function updateFxManifestVersion(fxmanifestPath) {
 async function createResourceVersion(config) {
     const { type, resourcePath } = config;
     const workspacePath = getEnv('GITHUB_WORKSPACE');
-    // If resourcePath is specified, use it as the source directory
-    const sourcePath = resourcePath
-        ? path_2.default.join(workspacePath, resourcePath)
-        : workspacePath;
-    const resourceName = path_2.default.basename(sourcePath);
+    // Get resource name from resourcePath or repository name
+    const resourceName = getResourceName(resourcePath);
     const dirName = type === 'escrowed' ? 'escrowed' : 'open-source';
     const targetDir = path_2.default.join(workspacePath, dirName);
     const zipSuffix = type === 'escrowed' ? 'escrowed' : 'opensource';
     core.info(`Creating ${type} version...`);
+    core.info(`Resource name: ${resourceName}`);
     if (resourcePath) {
         core.info(`Using resource path: ${resourcePath}`);
     }
@@ -321163,7 +321177,8 @@ async function zipDirectory(sourceDir, zipPath, _rootFolderName, excludePaths = 
             }
         }
     }
-    addDirectoryToZip(sourceDir, '');
+    // Add files inside root folder with the resource name
+    addDirectoryToZip(sourceDir, _rootFolderName);
     zipfile.end();
     const outputStream = fs_1.default.createWriteStream(outputZipPath);
     return new Promise((resolve, reject) => {

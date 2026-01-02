@@ -16,6 +16,36 @@ import path from 'path'
 import yazl from 'yazl'
 
 // ============================================================================
+// HELPERS
+// ============================================================================
+
+/**
+ * Get resource name from resourcePath or repository name
+ * @param resourcePath Optional path to resource folder
+ * @returns Resource name (folder name)
+ */
+export function getResourceName(resourcePath?: string): string {
+  // If resourcePath is specified, use the folder name from it
+  if (resourcePath) {
+    return path.basename(resourcePath)
+  }
+
+  // Otherwise use repository name from GITHUB_REPOSITORY (format: owner/repo-name)
+  const repo = process.env.GITHUB_REPOSITORY
+  if (repo) {
+    return repo.split('/').pop() || repo
+  }
+
+  // Fallback to workspace folder name
+  const workspace = process.env.GITHUB_WORKSPACE
+  if (workspace) {
+    return path.basename(workspace)
+  }
+
+  return 'resource'
+}
+
+// ============================================================================
 // CONSTANTS
 // ============================================================================
 
@@ -246,17 +276,15 @@ async function createResourceVersion(config: VersionConfig): Promise<string> {
   const { type, resourcePath } = config
   const workspacePath = getEnv('GITHUB_WORKSPACE')
 
-  // If resourcePath is specified, use it as the source directory
-  const sourcePath = resourcePath
-    ? path.join(workspacePath, resourcePath)
-    : workspacePath
-  const resourceName = path.basename(sourcePath)
+  // Get resource name from resourcePath or repository name
+  const resourceName = getResourceName(resourcePath)
 
   const dirName = type === 'escrowed' ? 'escrowed' : 'open-source'
   const targetDir = path.join(workspacePath, dirName)
   const zipSuffix = type === 'escrowed' ? 'escrowed' : 'opensource'
 
   core.info(`Creating ${type} version...`)
+  core.info(`Resource name: ${resourceName}`)
   if (resourcePath) {
     core.info(`Using resource path: ${resourcePath}`)
   }
@@ -671,7 +699,8 @@ async function zipDirectory(
     }
   }
 
-  addDirectoryToZip(sourceDir, '')
+  // Add files inside root folder with the resource name
+  addDirectoryToZip(sourceDir, _rootFolderName)
   zipfile.end()
 
   const outputStream = fs.createWriteStream(outputZipPath)

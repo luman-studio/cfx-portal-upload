@@ -13,13 +13,6 @@ import {
 const PORTAL_API = 'https://portal-api.cfx.re/v1'
 
 /**
- * Normalize resource name for filesystem: lowercase and replace spaces with underscores
- */
-function normalizeResourceName(name: string): string {
-  return name.toLowerCase().replace(/\s+/g, '_')
-}
-
-/**
  * Find asset by name from CFX Portal
  */
 async function findAssetByName(
@@ -94,8 +87,7 @@ async function waitForActiveVersion(
  */
 export async function downloadAsset(
   cookie: string,
-  assetName: string,
-  resourceName: string
+  assetName: string
 ): Promise<string> {
   core.info(`Downloading asset "${assetName}" from CFX Portal...`)
 
@@ -168,7 +160,9 @@ export async function downloadAsset(
     throw new Error('Downloaded file is not a valid ZIP archive')
   }
 
-  const zipPath = path.join(process.cwd(), `${resourceName}.zip`)
+  // Use safe filename without spaces
+  const safeFileName = assetName.toLowerCase().replace(/\s+/g, '_')
+  const zipPath = path.join(process.cwd(), `${safeFileName}.zip`)
   fs.writeFileSync(zipPath, response.data)
 
   const fileSizeKB = Math.round(response.data.length / 1024)
@@ -183,10 +177,9 @@ export async function downloadAsset(
 export async function deployToServer(
   sshConfig: SSHConfig,
   deployPath: string,
-  resourceName: string,
   zipPath: string
 ): Promise<void> {
-  core.info(`Deploying "${resourceName}" to ${sshConfig.host}...`)
+  core.info(`Deploying to ${sshConfig.host}...`)
 
   return new Promise((resolve, reject) => {
     const conn = new Client()
@@ -201,7 +194,8 @@ export async function deployToServer(
           return
         }
 
-        const remoteTempPath = `/tmp/${resourceName}.zip`
+        const zipFileName = path.basename(zipPath)
+        const remoteTempPath = `/tmp/${zipFileName}`
 
         core.info(`Uploading to ${remoteTempPath}...`)
 
@@ -222,16 +216,14 @@ export async function deployToServer(
             ? `$HOME${deployPath.slice(1)}`
             : deployPath
 
-          const remoteResourcePath = `${expandedPath}/${resourceName}`
-          core.info(`Extracting to ${remoteResourcePath}...`)
+          core.info(`Extracting to ${expandedPath}...`)
 
+          // ZIP already contains the resource folder (e.g., ghostbusters/)
+          // Just extract directly to deploy_path and the folder will be created
           const commands = [
-            `rm -rf "${remoteResourcePath}"`,
-            `mkdir -p "${remoteResourcePath}"`,
-            `unzip -o "${remoteTempPath}" -d "${remoteResourcePath}"`,
-            `rm "${remoteTempPath}"`,
-            // Fix structure if zip contains single folder
-            `cd "${remoteResourcePath}" && if [ $(ls -d */ 2>/dev/null | wc -l) -eq 1 ] && [ $(ls -A | wc -l) -eq 1 ]; then subdir=$(ls -d */); mv "$subdir"* . 2>/dev/null || true; mv "$subdir".* . 2>/dev/null || true; rmdir "$subdir" 2>/dev/null || true; fi`
+            `mkdir -p "${expandedPath}"`,
+            `unzip -o "${remoteTempPath}" -d "${expandedPath}"`,
+            `rm "${remoteTempPath}"`
           ]
 
           const fullCommand = commands.join(' && ')
@@ -264,7 +256,7 @@ export async function deployToServer(
                 return
               }
 
-              core.info(`Resource deployed to ${remoteResourcePath}`)
+              core.info(`Resource deployed to ${expandedPath}`)
               resolve()
             })
           })
@@ -304,23 +296,11 @@ export async function deployAsset(
   core.info('Starting deployment...')
   core.info('='.repeat(50))
 
-  const rawResourceName = deployConfig.resourceName || assetName
-  const resourceName = normalizeResourceName(rawResourceName)
+  // Download asset from portal (ZIP contains resource folder inside)
+  const zipPath = await downloadAsset(cookie, assetName)
 
-  core.info(
-    `Resource name normalized: "${rawResourceName}" -> "${resourceName}"`
-  )
-
-  // Download asset from portal
-  const zipPath = await downloadAsset(cookie, assetName, resourceName)
-
-  // Deploy to server
-  await deployToServer(
-    deployConfig.sshConfig,
-    deployConfig.deployPath,
-    resourceName,
-    zipPath
-  )
+  // Deploy to server - just extract to deploy_path, folder is already in ZIP
+  await deployToServer(deployConfig.sshConfig, deployConfig.deployPath, zipPath)
 
   // Cleanup
   try {
